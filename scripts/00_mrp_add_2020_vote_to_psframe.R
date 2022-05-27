@@ -6,68 +6,56 @@
 
 rm(list=ls())
 library(tidyverse)
-library(brms) # install.packages('brms',version='2.9.0')
-library(cmdstanr)
 library(survey)
+library(brms) # install.packages('brms',version='2.9.0')
+library(cmdstanr) # install.packages("cmdstanr", repos = c("https://mc-stan.org/r-packages/", getOption("repos"))); cmdstanr::install_cmdstan()
+library(tidybayes)
+
+# helper functions
+source("scripts/helpers.R")
 
 # stan stuff
 mc.cores = parallel::detectCores()
 
-
 # global model settings
-source("scripts/helpers.R")
-
-
-# functions ---------------------------------------------------------------
-# declare a function for scaling a data frame given vars
-scale_variables <- function(df, vars_to_scale){
-  # scale given cols
-  df %>%
-    mutate_at(vars_to_scale,
-              scale) %>%
-    return()
-  
-}
-
-# also declare a function for UNscaling variables
-unscale_variables <- function(df, vars_to_unscale){
-  
-  # scale cols 3 to 17
-  df %>%
-    mutate_at(vars_to_unscale, 
-              function(x){
-                x * attr(x, 'scaled:scale') + attr(x, 'scaled:center')
-                
-              }) %>%
-    as_tibble() %>%
-    return()
-  
-}
-
+REDO_MODELS = TRUE
 
 # STATE LEVEL -------------------------------------------------------------
 message("Wrangling data")
 
-# read in post-strat targets
-targets <- read_csv("data/mrp/acs_psframe.csv")
-
-# read and scale covars -- mrp works best with scaled and centered state-level predictors
-covars <- read_csv("data/state/state_covariates.csv")
-
-scale_unscale_vars <- names(covars)[3:18] # getting names of cols to scale
-
-covars <- scale_variables(covars,scale_unscale_vars) #scale
-
 # read in crosswalk
 state_region_cw <- read_csv("data/state/state_region_crosswalk.csv")
 
+# read in post-strat targets
+targets <- read_csv("data/mrp/acs_psframe.csv") %>% 
+  select(-c(region,region_census,region_computed))
+
+# read covars
+covars <- read_csv("data/state/state_covariates.csv")
+
+# generation state-level vote equal to region average
+covars = covars %>%
+  left_join(state_region_cw %>% select(state_name, region)) %>%
+  left_join(
+    covars %>% 
+      left_join(state_region_cw) %>%
+      group_by(region) %>%
+      summarise(region_biden_2020 = weighted.mean(state_biden_2020, total_votes_2020))
+  ) %>%
+  select(-c(region))
+
+
+# and now scale covars -- mrp works best with scaled and centered state-level predictors
+scale_unscale_vars <- names(covars)[3:ncol(covars)] # getting names of cols to scale
+
+covars <- scale_variables(covars,scale_unscale_vars) #scale
+
 
 # SURVEY DATA -------------------------------------------------------------
-cces20.raw <- read_rds('data/ces_2020/CES20_Common_OUTPUT_vv.rds')
+ces.raw <- read_rds('data/ces_2020/CES20_Common_OUTPUT_vv.rds')
 
 # mutate the vars we need
-cces20 <- cces20.raw %>%
-  filter(!is.na(vvweight_post)) %>%
+ces <- ces.raw %>%
   # mutate vars
   mutate(
     ### mutate demographic variables to match the census
@@ -96,12 +84,6 @@ cces20 <- cces20.raw %>%
                     educ == 6~ "Post-grad",
                     TRUE ~ NA_character_),
     
-    # marstat
-    marstat = case_when(marstat %in% c(1,6)  ~ 'Married',
-                        marstat %in% 2:4 ~ 'Not married',
-                        marstat == 5 ~ 'Never married',
-                        TRUE ~ NA_character_),
-    
     # income5
     income5 = case_when(faminc_new %in% 1:3 ~ 'Under $30K',
                         faminc_new %in% 4:6 ~ "$30-60K",
@@ -114,18 +96,22 @@ cces20 <- cces20.raw %>%
     
     ### voting variables
     # vote in 2016
-    past_vote = case_when(is.na(CL_2020gvm ) ~ 'Non_voter',
-                               CC20_364a == 1 | CC20_364b == 1 ~ 'Trump',
-                               CC20_364a == 2 | CC20_364b == 2~ 'Biden', 
-                               CC20_364a == 3 | CC20_364b == 3~ 'Other',
-                               T ~ 'Non_voter'),
+    past_vote = ifelse(
+      is.na(CL_2020gvm), 
+      'Non_voter',
+      case_when(
+        CC20_364a == 1 | CC20_364b == 1 ~ 'Trump',
+        CC20_364a == 2 | CC20_364b == 2 ~ 'Biden', 
+        CC20_364a == 3 | CC20_364b == 3 ~ 'Other',
+        T ~ 'Non_voter')
+    ),
     
     # validation variable
     #voter_validated = ifelse(CL_E2016GVM != '','Y','N'),
     
     ### MISC
     # weight
-    weight = as.numeric(vvweight_post),
+    weight = as.numeric(commonweight),
     
     state_name = state_region_cw$state_name[match(inputstate_post,state_region_cw$state_fips)]
     
@@ -134,77 +120,81 @@ cces20 <- cces20.raw %>%
     
   ) %>%
   dplyr::select(state_name,
-                race, sex, age, edu, marstat,
-                income5,
+                sex, age, race, edu, income5,
                 past_vote,
                 weight,
   ) 
 
-nrow(cces20) / nrow(cces20.raw)
+prop.table(table(is.na(ces.raw$CL_2020gvm)))
+prop.table(table(ces$past_vote == 'Non_voter'))
 
-cces20 <- cces20 %>%
+nrow(ces)
+nrow(ces) / nrow(ces.raw)
+
+ces <- ces %>%
   left_join(state_region_cw)
 
-cces20 %>%
+ces %>%
   #filter(past_vote != 'Non_voter') %>%
   group_by(past_vote) %>%
-  summarise(n = sum(weight)) %>%
+  summarise(n = sum(weight,na.rm=T)) %>%
   mutate(pct = n/sum(n))
 
-cces20 %>%
+ces %>%
   filter(past_vote != 'Non_voter') %>%
-  group_by(race, past_vote) %>%
-  summarise(n = sum(weight)) %>%
+  group_by(past_vote) %>%
+  summarise(n = sum(weight,na.rm=T)) %>%
   mutate(pct = n/sum(n))
 
-cces20 = na.omit(cces20)
+# remove any NA obs
+ces = na.omit(ces)
 
-# final survey cleanup ----------------------------------------------------
+# final survey cleanup 
 # check size of poll
-nrow(cces20)
+nrow(ces)
 
 # check to make sure each matching var IS THE SAME in both datasets
-unique(cces20$age) %in% unique(targets$age)
-unique(cces20$sex) %in% unique(targets$sex)
-unique(cces20$race) %in% unique(targets$race)
-unique(cces20$edu) %in% unique(targets$edu)
-unique(cces20$past_vote) %in% unique(targets$past_vote)
+unique(ces$age) %in% unique(targets$age)
+unique(ces$sex) %in% unique(targets$sex)
+unique(ces$race) %in% unique(targets$race)
+unique(ces$edu) %in% unique(targets$edu)
+unique(ces$past_vote) %in% unique(targets$past_vote)
 
 #some checks
-cces20.svy <- svydesign(~1,data=cces20,weights=~weight)
+ces.svy <- svydesign(~1,data=ces,weights=~weight)
 
-svymean(~past_vote,cces20.svy)
-svymean(~past_vote,subset(cces20.svy,past_vote != 'Non_voter'))
+svymean(~past_vote,ces.svy)
+svymean(~past_vote,subset(ces.svy,past_vote != 'Non_voter'))
 
-svymean(~past_vote,subset(cces20.svy,past_vote != 'Non_voter'))
+svymean(~past_vote,subset(ces.svy,past_vote != 'Non_voter'))
 
-cces20 %>%
+ces %>%
   dplyr::filter(past_vote != 'Non_voter') %>%
   group_by(past_vote) %>%
   summarise(n=sum(weight)) %>%
   mutate(prop=n/sum(n))
 
-cces20 %>%
+ces %>%
   group_by(state_name,past_vote) %>%
   summarise(n=sum(weight)) %>%
   mutate(prop=n/sum(n))
 
-cces20 %>%
+ces %>%
   group_by(state_name,past_vote) %>%
   summarise(n=sum(weight)) %>%
   mutate(prop=n/sum(n))
 
-cces20 %>%
+ces %>%
   group_by(past_vote) %>%
   summarise(n=sum(weight)) %>%
   mutate(prop=n/sum(n))
 
 svymean(~past_vote, 
-        subset(cces20.svy,state_name=='Minnesota'),
+        subset(ces.svy,state_name=='Minnesota'),
         na.rm=T) 
 
 # sample size by state
-sample_size_bystate <- cces20 %>% 
+sample_size_bystate <- ces %>% 
   group_by(state_name) %>%
   summarise(state_sample_size=n())
 
@@ -218,290 +208,79 @@ targets <- targets %>%
   left_join(state_region_cw %>% 
               dplyr::select(state_fips,state_name, state_abb, region))
 
-cces20 <- cces20 %>%
+ces <- ces %>%
   left_join(state_region_cw %>% 
               dplyr::select(state_name, state_abb, region))
-
 
 # adding a few other state-level covariates, such as union household and evangelical %
 targets <- targets %>%
   left_join(covars)
 
-cces20 <- cces20 %>%
+ces <- ces %>%
   left_join(covars)
-
-# CHECK DATA AGAINST TARGETS ----------------------------------------------
-# get cces20
-cces20.svy <- svydesign(~1, data=cces20,weights=~weight)
-
-cces20.targets.bkdown <- svytable(~edu+state_abb, cces20.svy) %>% 
-  as.data.frame() %>%
-  group_by(state_abb) %>%
-  mutate(cces20_prop = Freq/sum(Freq)) %>%
-  dplyr::select(state_abb,edu,cces20_prop) %>%
-  arrange(state_abb,desc(cces20_prop)) %>%
-  ungroup()
-
-# get acs
-acs.targets.bkdown <- targets %>%
-  group_by(state_abb, edu) %>%
-  summarise(n=sum(n)) %>%
-  group_by(state_abb) %>%
-  mutate(acs_prop = n/sum(n))  %>%
-  dplyr::select(state_abb,edu,acs_prop) %>%
-  arrange(state_abb,desc(acs_prop)) %>%
-  ungroup()
-
-acs.targets.bkdown %>% left_join(cces20.targets.bkdown) %>%
-  mutate(state_abb = factor(state_abb)) %>%
-  ggplot(aes(x=acs_prop,y=cces20_prop,col=edu)) +
-  geom_abline() +
-  geom_text(aes(label=state_abb)) +
-  geom_smooth(aes(col=edu),se=F,method='lm') +
-  #facet_wrap(~state_abb) +
-  theme_minimal() +
-  theme(legend.position = 'top')
-
-# past vote
-past_vote_compare <- targets %>%
-  group_by(state_abb,past_vote) %>%
-  summarise(n = sum(n)) %>%
-  group_by(state_abb) %>%
-  mutate(target_prop=n/sum(n)) %>%
-  left_join(svytable(~past_vote+state_abb, cces20.svy) %>% 
-              as.data.frame() %>%
-              group_by(state_abb) %>%
-              mutate(cces20_prop = Freq/sum(Freq)) %>%
-              dplyr::select(state_abb,past_vote,cces20_prop) %>%
-              arrange(state_abb,desc(cces20_prop)) %>%
-              ungroup(),
-            by=c('state_abb','past_vote')
-  ) %>%
-  mutate(diff = cces20_prop - target_prop) 
-
-# plot comparison
-past_vote_compare %>% 
-  #dplyr::filter(diff > 0.1) %>%
-  #dplyr::filter(party=='Republican') %>%
-  ggplot(.,aes(x=target_prop,y=cces20_prop,col=past_vote)) +
-  geom_abline() +
-  geom_smooth(se=F,method='lm') +
-  geom_text(aes(label=state_abb)) +
-  theme_minimal() + 
-  labs(x='Targets share of population',
-       y='Diff b/t cces20 and target share of population')
-
-
-# plot differences
-past_vote_compare %>% 
-  #dplyr::filter(diff > 0.1) %>%
-  #dplyr::filter(party=='Republican') %>%
-  ggplot(.,aes(x=target_prop,y=diff,col=past_vote)) +
-  geom_hline(yintercept=0) +
-  geom_smooth(se=F,method='lm') +
-  geom_text(aes(label=state_abb)) +
-  theme_minimal() + 
-  labs(x='Targets share of population',
-       y='Diff b/t cces20 and target share of population')
-
-
-# RAKE WEIGHTS TO MATCH 2020 ----------------------------------------------
-# weight polls to be representative at state-level
-# get pop numbers
-state_targets_pastvote <- unscale_variables(covars,scale_unscale_vars) %>% 
-  as.data.frame() %>%
-  dplyr::select(state_name,Biden=state_biden_2020,Trump=state_trump_2020,state_vap_turnout_2020) %>%
-  left_join(targets %>% 
-              group_by(state_name) %>% summarise(n=sum(n)))
-
-# create "Other" and Non_voter number, too
-state_targets_pastvote <- state_targets_pastvote %>%
-  mutate(Other = 1 - (Biden + Trump),
-         Non_voter = 1 - state_vap_turnout_2020) %>%
-  mutate(Biden = Biden * n,
-         Trump = Trump * n,
-         Other = Other *n,
-         Non_voter = Non_voter * n) %>%
-  dplyr::select(state_name, Biden, Trump, Other, Non_voter) %>%
-  gather(past_vote,Freq,2:5) %>%
-  mutate(Freq = Freq/sum(Freq)) %>%
-  ungroup() 
-
-# can't have a weight of 0, so make v small
-state_targets_pastvote <- state_targets_pastvote %>%
-  mutate(Freq = ifelse(Freq==0,0.00000001,Freq))
-
-state_targets_pastvote <- state_targets_pastvote %>%
-  mutate(Freq = Freq*nrow(cces20))  
-
-# make sure weighting vars are same levels
-state_targets_pastvote <- state_targets_pastvote %>%
-  mutate(past_vote = factor(past_vote,levels=c('Biden','Trump','Other','Non_voter')))
-
-cces20 <- cces20 %>%
-  mutate(past_vote = ifelse(past_vote == 'Non_voter','Non_voter',past_vote),
-         past_vote = factor(past_vote,levels=c('Biden','Trump','Other','Non_voter')))
-
-# filter out states without all 4 vote options
-filter_out_these_states <- cces20 %>% group_by(state_name,past_vote) %>% summarise(n=n()) %>% group_by(state_name) %>% summarise(n=n()) %>% dplyr::filter(n<4) %>% pull(state_name)
-
-# create survey object stratified by state
-cces20.svy <- svydesign(ids=~1,
-                        strata=~state_name,
-                        data=cces20 %>% dplyr::filter(!state_name %in% filter_out_these_states),
-                        weights=~weight)
-
-# rake weights based on past vote
-cces20.svy.raked <- postStratify(design = cces20.svy,
-                                 strata = ~past_vote+state_name,
-                                 population = state_targets_pastvote %>% dplyr::filter(!state_name %in% filter_out_these_states) %>% group_by(past_vote,state_name) %>% summarise(Freq = sum(Freq)), 
-                                 partial=T)
-
-# TRIM WEIGHTS? 
-cces20.svy.raked <- trimWeights(design=cces20.svy.raked,lower=0.0001000195,upper=15.00007,strict=T)
-
-# extract weights
-new_weights <- attr(cces20.svy.raked$postStrata[[1]],'weights')
-new_weights <- weights(cces20.svy.raked)
-
-summary(new_weights)
-
-# make new DF with old weights and new data
-weighted_poll <- cces20.svy.raked$variables %>%
-  mutate(weight=new_weights)
-
-# check data
-weighted_poll %>% 
-  dplyr::filter(past_vote != 'Non_voter') %>%
-  group_by(state_name,past_vote) %>%
-  summarise(prop=sum(weight)) %>%
-  mutate(prop = prop/sum(prop)) %>%
-  spread(past_vote,prop) %>%
-  mutate(biden_margin.yg = Biden - Trump) %>%
-  dplyr::select(state_name,
-                biden_margin.yg) %>%
-  left_join(unscale_variables(covars,scale_unscale_vars) %>% 
-              dplyr::select(state_name,state_biden_2020,state_trump_2020)) %>%
-  ggplot(.,aes(x=biden_margin.yg, y=state_biden_2020-state_trump_2020, label=state_name)) +
-  geom_abline() +
-  geom_text() +
-  stat_smooth(method='lm') +
-  coord_cartesian(xlim=c(-0.5,0.5),ylim=c(-0.5,0.5)) +
-  geom_hline(yintercept = 0) +
-  geom_vline(xintercept = 0)
-
-# save newly weighted poll over the cces20 object
-# and add back the rows from the unpopulated cells
-cces20 <- weighted_poll %>%
-  bind_rows(cces20 %>% dplyr::filter(state_name %in% filter_out_these_states)) %>%
-  mutate(past_vote = ifelse(past_vote == 'Non_voter','Non_voter',
-                                 as.character(past_vote))) %>%
-  as.data.frame()
-
-
-# check again
-cces20 %>% 
-  dplyr::filter(past_vote != 'Non_voter') %>%
-  group_by(state_name,past_vote) %>%
-  summarise(prop=sum(weight)) %>%
-  mutate(prop = prop/sum(prop)) %>%
-  spread(past_vote,prop) %>%
-  mutate(biden_margin.yg = Biden - Trump) %>%
-  dplyr::select(state_name,
-                biden_margin.yg) %>%
-  left_join(unscale_variables(covars,scale_unscale_vars) %>% 
-              dplyr::select(state_name,state_biden_2020,state_trump_2020)) %>%
-  ggplot(.,aes(x=biden_margin.yg, y=state_biden_2020-state_trump_2020, label=state_name)) +
-  geom_abline() +
-  geom_text() +
-  stat_smooth(method='lm') +
-  coord_cartesian(xlim=c(-0.5,0.5),ylim=c(-0.5,0.5)) +
-  geom_hline(yintercept = 0) +
-  geom_vline(xintercept = 0)
-
-
-# check some tabs and such
-cces20.svy <- svydesign(~1,data=cces20,weights=~weight)
-svymean(~past_vote,cces20.svy)
-svymean(~past_vote,subset(cces20.svy,past_vote != "Non_voter"))
-svymean(~past_vote,subset(cces20.svy,past_vote != "Non_voter" & past_vote != "Non_voter"))
-svymean(~past_vote,subset(cces20.svy,past_vote != "Non_voter" & past_vote == "Non_voter"))
-svymean(~past_vote,subset(cces20.svy,past_vote != "Non_voter" & state_name=='Louisiana'),na.rm=T)
-
 
 # MODEL LIKELY VOTERS -----------------------------------------------------
 # voter dummy variable
-cces20 <- cces20 %>%
+ces <- ces %>%
   mutate(likely_voter_dummy = round(past_vote != 'Non_voter') ) %>%
   ungroup()
+
+# model formula
+turnout_formula = likely_voter_dummy ~ # | weights(weight) ~
+  # state-level smoothers
+  state_biden_2020 + state_vap_turnout_2016 + state_white_evangel + 
+  state_median_income + state_urbanicity +
+  # main demographics, global 
+  race + edu + race:edu + race:sex + 
+  # pooling across demographics
+  (1 | sex) + (1 | age) + (1 | race) + (1 | edu) + (1 | income5) +
+  (1 | race:edu) + (1 | sex:edu) + 
+  (1 | region) + (1 | state_name) # +
+  # demographics that should vary by geography
+  # (1 + sex + age + race + income5 + edu | region/state_name)
 
 # run model!
 message("Running 2020 turnout MRP")
 
 if(REDO_MODELS | isFALSE(any(grepl("turnout_2020_model.rds" , list.files("models/"))))){
-  turnout_2020_model <- brm(formula = likely_voter_dummy | weights(weight) ~
-                              # state-level smoothers
-                              state_biden_2020 + state_vap_turnout_2016 + state_white_protestant + state_median_income +
-                              income.c*state_median_income + income.c*state_biden_2020 +
-                              
-                              # main demographics
-                              (1 | sex) + (1 | age) + (1 | edu) + age.c +
-                              (1 + state_biden_2020  + income.c | race) +
-                              # geography and income smoothing
-                              (1 + income.c | state_name) + (1 | state_name:race) + (1 | state_name:income5) + (1 | state_name:race:edu) +
-                              (1 + income.c | region) + (1 | region:race) + (1 | region:income5) + (1 | region:race:edu) +
-                              # interactions
-                              (1 | race:edu) + (1 | race:income5) + (1 | race:sex) +
-                              (1 | age:edu) + (1 | income5:edu) + (1 | sex:age) +
-                              # past vote!
-                              (1 | past_vote:edu) + (1 | past_vote:age) + (1 | past_vote:race) +
-                              (1 | past_vote:income5) + (1 | past_vote:race:edu),
-                            data = cces20, # %>% group_by(time_stamp) %>% sample_n(500) %>% ungroup(),
+  turnout_2020_model <- brm(formula = turnout_formula,
+                            data = ces , #%>% sample_n(3000) %>% ungroup(),
                             family = bernoulli(link='logit'),
                             # priors
                             prior = c(set_prior("normal(0, 1)", class = "Intercept"),
                                       set_prior("normal(0, 1)", class = "b"),
                                       set_prior("normal(0, 1)", class = "sd")),
-                            # seed=1843,
-                            # iter = MAX_NUM_ITER, # use high iter in VB compared to MCMC
-                            # algorithm=ALGO,
-                            # tol_rel_obj = TOLERANCE) # decrease tol to improve convergence
-                            iter = MCMC_ITER,
-                            warmup = MCMC_WARMUP,
-                            chains = MCMC_chains,
-                            cores = MCMC_cores,
-                            control = list(adapt_delta = MCMC_adapt_delta,
-                                           max_treedepth = MCMC_MAX_TREE),
-                            refresh = MCMC_refresh,
-                            thin = MCMC_THIN,
-                            backend = MCMC_BACKEND,
-                            threads = threading(MCMC_THREADS))
+                            # settings
+                            iter = 1000,
+                            warmup = 500,
+                            chains = 4,
+                            cores = 4,
+                            control = list(adapt_delta = 0.9, max_treedepth = 12),
+                            refresh = 10,
+                            thin = 1,
+                            backend = 'cmdstanr',
+                            threads = threading(2))
   
   write_rds(turnout_2020_model,"models/turnout_2020_model.rds",compress = 'gz')
 }else{
   turnout_2020_model <- read_rds("models/turnout_2020_model.rds")
 }
 
+
 # post-stratification stage!
 message("\tPost-stratifying 2020 turnout onto targets")
 
-# get 1000 draws from posterior predictive
-cell_pred_2020_turnout.mat <- rstantools::posterior_linpred(turnout_2020_model,
-                                                            newdata=targets %>% 
-                                                              mutate(income5 = factor(income5, ordered = TRUE, levels=c('Under $30K',"$30-60K",'$60-100K',
-                                                                                                                        "$100-150K", '$150K or more')),
-                                                                     income.c = as.numeric(income5),
-                                                                     age = factor(age, ordered = TRUE, levels=c('18-29',"30-44",'45-64',"65+")),
-                                                                     
-                                                                     age.c = as.numeric(age)) ,
-                                                            nsamples=NUM_DRAWS,draws=NUM_DRAWS, 
-                                                            allow_new_levels=TRUE,
-                                                            transform=TRUE)
+# get 1000 draws from posterior predictive -- major party vote
+cell_pred_2020_turnout.mat <- rstantools::posterior_epred(
+  object = turnout_2020_model,
+  newdata = targets,
+  ndraws = 250, 
+  allow_new_levels = TRUE,
+  transform = TRUE
+)
 
 # get medain for turnout
 cell_pred_2020_turnout <- cell_pred_2020_turnout.mat %>% apply(.,2,median)
-
-mean(cell_pred_2020_turnout)
 
 # add share that are predicted voters to pop
 targets <- targets %>%
@@ -511,6 +290,7 @@ targets <- targets %>%
 targets %>%
   summarise(likely_voter = sum(likely_voter * n) / sum(n))
 
+svymean(~past_vote, ces.svy)
 
 targets %>%
   group_by(race) %>%
@@ -520,36 +300,32 @@ targets %>%
   group_by(age) %>%
   summarise(likely_voters = sum(likely_voter*n) / sum(n))
 
-targets %>%
-  group_by(past_vote) %>%
-  summarise(likely_voters = sum(likely_voter*n) / sum(n))
 
 # MODEL 2020 VOTE ---------------------------------------------------------
 # multilevel regression stage!
 # this happens in two steps:
 message("Running 2020 biden/trump/other vote MRP")
 
+# model formula
+vote_formula = past_vote ~ # | weights(weight) ~
+  # state-level smoothers
+  state_biden_2020 + state_vap_turnout_2016 + state_white_evangel + 
+  state_median_income + state_urbanicity +
+  # main demographics, global 
+  race + edu + race:edu + race:sex + 
+  # pooling across demographics
+  (1 | sex) + (1 | age) + (1 | race) + (1 | edu) + (1 | income5) +
+  (1 | race:edu) + (1 | sex:edu) + 
+  (1 | region) + (1 | state_name) # +
+  # demographics that should vary by geography
+  # (1 + sex + age + race + income5 + edu | region/state_name)
+
+
+
 if(REDO_MODELS | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/"))))){
-  pres_2020_model <- brm(formula = past_vote | weights(weight) ~
-                           # state-level smoothers
-                           state_biden_2020 + state_vap_turnout_2016 + state_white_protestant + state_median_income +
-                           income.c*state_median_income + income.c*state_biden_2020 +
-                           
-                           # main demographics
-                           (1 | sex) + (1 | age) + (1 | edu) + age.c +
-                           (1 + state_biden_2020  + income.c | race) +
-                           # geography and income smoothing
-                           (1 + income.c | state_name) + (1 | state_name:race) + (1 | state_name:income5) + (1 | state_name:race:edu) +
-                           (1 + income.c | region) + (1 | region:race) + (1 | region:income5) + (1 | region:race:edu) +
-                           # interactions
-                           (1 | race:edu) + (1 | race:income5) + (1 | race:sex) +
-                           (1 | age:edu) + (1 | income5:edu) + (1 | sex:age) +
-                           # past vote!
-                           (1 | past_vote:edu) + (1 | past_vote:age) + (1 | past_vote:race) +
-                           (1 | past_vote:income5) + (1 | past_vote:race:edu),
-                         data = cces20[cces20$past_vote != 'Non_voter',], # %>% group_by(time_stamp) %>% sample_n(500) %>% ungroup(),
-                         family = categorical(link='logit',
-                                              refcat = 'Other'),
+  pres_2020_model <- brm(formula = vote_formula,
+                         data = ces[ces$past_vote != 'Non_voter',] ,# %>% sample_n(5000) %>% ungroup(),
+                         family = categorical(link='logit', refcat = 'Other'),
                          # priors
                          prior = c(set_prior("normal(0, 1)", class = "Intercept",dpar='muBiden'),
                                    set_prior("normal(0, 1)", class = "Intercept",dpar='muTrump'),
@@ -557,20 +333,16 @@ if(REDO_MODELS | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/")
                                    set_prior("normal(0, 1)", class = "b",dpar='muTrump'),
                                    set_prior("normal(0, 1)", class = "sd",dpar = 'muBiden'),
                                    set_prior("normal(0, 1)", class = "sd",dpar = 'muTrump')),
-                         # seed=1843,
-                         # iter = MAX_NUM_ITER, # use high iter in VB compared to MCMC
-                         # algorithm=ALGO,
-                         # tol_rel_obj = TOLERANCE) # decrease tol to improve convergence
-                         iter = MCMC_ITER,
-                         warmup = MCMC_WARMUP,
-                         chains = MCMC_chains,
-                         cores = MCMC_cores,
-                         control = list(adapt_delta = MCMC_adapt_delta,
-                                        max_treedepth = MCMC_MAX_TREE),
-                         refresh = MCMC_refresh,
-                         thin = MCMC_THIN,
-                         backend = MCMC_BACKEND,
-                         threads = threading(MCMC_THREADS))
+                         # settings
+                         iter = 1000,
+                         warmup = 500,
+                         chains = 4,
+                         cores = 4,
+                         control = list(adapt_delta = 0.9, max_treedepth = 12),
+                         refresh = 10,
+                         thin = 1,
+                         backend = 'cmdstanr',
+                         threads = threading(2))
   
   write_rds(pres_2020_model,"models/pres_2020_model.rds",compress = 'gz')
 }else{
@@ -580,27 +352,20 @@ if(REDO_MODELS | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/")
 # post-stratification stage!
 message("\tPost-stratifying 2020 vote onto targets")
 
-# get 1000 draws from posterior predictive -- major party vote
-cell_pred_2020_vote.mat <- rstantools::posterior_linpred(pres_2020_model,
-                                                         newdata=targets %>% 
-                                                           mutate(income5 = factor(income5, ordered = TRUE, levels=c('Under $30K',"$30-60K",'$60-100K',
-                                                                                                                     "$100-150K", '$150K or more')),
-                                                                  income.c = as.numeric(income5),
-                                                                  age = factor(age, ordered = TRUE, levels=c('18-29',"30-44",'45-64',"65+")),
-                                                                  
-                                                                  age.c = as.numeric(age)) ,
-                                                         nsamples=NUM_DRAWS,draws=NUM_DRAWS, 
-                                                         allow_new_levels=TRUE,
-                                                         transform=TRUE)
+# get 1000 draws from posterior predictive 
+cell_pred_2020_vote.mat <- rstantools::posterior_epred(
+  object = pres_2020_model,
+  newdata = targets,
+  ndraws = 250, 
+  allow_new_levels = TRUE,
+  transform = TRUE
+)
 
 # get medain for major party vote
 cell_pred_2020_dem <- cell_pred_2020_vote.mat[,,1] %>% apply(.,2,median)
 cell_pred_2020_rep <- cell_pred_2020_vote.mat[,,3] %>% apply(.,2,median)
 cell_pred_2020_other <- cell_pred_2020_vote.mat[,,2] %>% apply(.,2,median)
 
-mean(cell_pred_2020_dem)
-mean(cell_pred_2020_rep)
-mean(cell_pred_2020_other)
 
 # make vars on targets frame
 targets <- targets %>%
@@ -608,29 +373,22 @@ targets <- targets %>%
          pres_2020_rep = cell_pred_2020_rep,
          pres_2020_other = cell_pred_2020_other)
 
-
 # check
 targets %>%
-  dplyr::filter(past_vote != 'Non_voter') %>%
+  mutate(n = n * likely_voter) %>%
   summarise(dem = sum(pres_2020_dem * n) / sum(n),
             rep = sum(pres_2020_rep * n) / sum(n),
             other = sum(pres_2020_other * n) / sum(n),
   ) 
 
-targets %>%
-  summarise(dem = sum(pres_2020_dem * n * likely_voter) / sum(n * likely_voter),
-            rep = sum(pres_2020_rep * n * likely_voter) / sum(n * likely_voter),
-            other = sum(pres_2020_other * n * likely_voter) / sum(n * likely_voter),
-  ) 
-
-svymean(~past_vote,subset(cces20.svy,past_vote!='Non_voter'),na.rm=T)
-
+svymean(~past_vote,subset(ces.svy,past_vote!='Non_voter'),na.rm=T)
 
 targets %>%
+  mutate(n * likely_voter) %>%
   group_by(state_name) %>%
-  summarise(dem = sum(pres_2020_dem * n * likely_voter) / sum(n * likely_voter),
-            rep = sum(pres_2020_rep * n * likely_voter) / sum(n * likely_voter),
-            other = sum(pres_2020_other * n * likely_voter) / sum(n * likely_voter),
+  summarise(dem = sum(pres_2020_dem * n) / sum(n),
+            rep = sum(pres_2020_rep * n) / sum(n),
+            other = sum(pres_2020_other * n) / sum(n),
   ) 
 
 
@@ -821,7 +579,7 @@ targets %>%
 # UNSCALE ALL THE DATASETS ------------------------------------------------
 # using unscale function
 targets <- unscale_variables(targets,scale_unscale_vars)
-cces20 <- unscale_variables(cces20,scale_unscale_vars)
+ces <- unscale_variables(ces,scale_unscale_vars)
 covars <- unscale_variables(covars,scale_unscale_vars)
 
 # SAVE! -------------------------------------------------------------------
@@ -1069,7 +827,7 @@ state_preds %>%
        y='',
        subtitle='Predicted Joe Biden vote margin (2020) minus Hillary Clinton vote\nmargin (2016), percentage points, by state',
        title='A re-realignment election',
-       caption='Source: cces20/The Economist; US Census Bureau')
+       caption='Source: ces/The Economist; US Census Bureau')
 #ggsave("temp.svg",width = 6,height=5)
 
 # how much does shift among whites explain shift in state?
@@ -1266,7 +1024,7 @@ demo_state_table %>%
   labs(x="Hillary Clinton's vote margin in 2016, percentage points",
        y='',
        subtitle="Joe Biden's predicted vote margin against Donald\nTrump in 2020 relative to Hillary Clinton's in 2016\nBy state and age group",
-       caption="Source: cces20/The Economist") +
+       caption="Source: ces/The Economist") +
   geom_vline(xintercept = 0) +
   geom_hline(yintercept = 0)
 
@@ -1322,7 +1080,7 @@ grid.arrange(ncol=2,
 )
 dev.off();Sys.sleep(2)
 
-# sanity check -- weighted avg of approval and disapproval compared to cces20
+# sanity check -- weighted avg of approval and disapproval compared to ces
 state_check <- targets_spread %>%
   mutate(n = n*likely_voter) %>%
   group_by(state_abb, state_name) %>%
@@ -1337,15 +1095,15 @@ weighted.mean(state_check$pres_2020_dem,state_check$weight)
 weighted.mean(state_check$pres_2020_rep,state_check$weight)
 weighted.mean(state_check$pres_2020_other,state_check$weight)
 
-svymean(~past_vote, cces20.svy)
-svymean(~past_vote, subset(cces20.svy, past_vote!='Non_voter')) #subset(cces20.svy, voter_reg == 1))
-svymean(~past_vote, subset(cces20.svy, past_vote!='Non_voter'&past_vote!='Non_voter')) #subset(cces20.svy, voter_reg == 1))
-svymean(~past_vote, subset(cces20.svy, past_vote!='Non_voter'&past_vote=='Non_voter')) #subset(cces20.svy, voter_reg == 1))
+svymean(~past_vote, ces.svy)
+svymean(~past_vote, subset(ces.svy, past_vote!='Non_voter')) #subset(ces.svy, voter_reg == 1))
+svymean(~past_vote, subset(ces.svy, past_vote!='Non_voter'&past_vote!='Non_voter')) #subset(ces.svy, voter_reg == 1))
+svymean(~past_vote, subset(ces.svy, past_vote!='Non_voter'&past_vote=='Non_voter')) #subset(ces.svy, voter_reg == 1))
 
 
 # check state observations
 svytable(~past_vote+state_name,
-         subset(cces20.svy, past_vote!='Non_voter')) %>% #subset(cces20.svy, voter_reg == 1)) %>%
+         subset(ces.svy, past_vote!='Non_voter')) %>% #subset(ces.svy, voter_reg == 1)) %>%
   prop.table(margin=2) %>%
   t() %>%
   as_tibble() %>%
@@ -1392,7 +1150,7 @@ map <- urbnmapr::states %>%
                              "Republican +20 or higher" = "#943126")) +
   labs(title="2020 presidential vote by state",
        subtitle="Among likely voters",
-       caption = "Source: cces20/The Economist") +
+       caption = "Source: ces/The Economist") +
   coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
   theme_void() +
   theme(legend.position = 'top',
@@ -1443,7 +1201,7 @@ bdown_map <- urbnmapr::states %>%
                              "Republican +20 or higher" = "#943126")) +
   labs(title="2020 presidential vote by state",
        subtitle="Among likely voters",
-       caption = "Source: cces20/The Economist") +
+       caption = "Source: ces/The Economist") +
   coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
   theme_void() +
   theme(legend.position = 'top',
@@ -1527,7 +1285,7 @@ bdown_map_scaled <- ggplot() +
                               "Republican +20 or higher" = "#943126")) +
   labs(title="2020 presidential vote by state",
        subtitle="Among likely voters",
-       caption = "Source: cces20/The Economist") +
+       caption = "Source: ces/The Economist") +
   coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
   guides('col'=guide_legend(override.aes = list(size = 10)),
          'size'='none') +
@@ -1609,7 +1367,7 @@ bdown_map_scaled <- ggplot() +
                               "Republican +20 or higher" = "#943126")) +
   labs(title="2020 presidential vote by state",
        subtitle="Among likely voters",
-       caption = "Source: cces20/The Economist") +
+       caption = "Source: ces/The Economist") +
   coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
   guides('col'=guide_legend(override.aes = list(size = 10)),
          'size'='none') +

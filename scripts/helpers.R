@@ -1,6 +1,8 @@
 options(scipen = 999)
 
 
+# misc --------------------------------------------------------------------
+# logits
 invlogit <- function(x) {
   return(plogis(x))
 }
@@ -9,6 +11,34 @@ logit <- function(x) {
   return(qlogis(x))
 }
 
+# declare a function for scaling a data frame given vars
+scale_variables <- function(df, vars_to_scale){
+  # scale given cols
+  df %>%
+    mutate_at(vars_to_scale,
+              scale) %>%
+    return()
+  
+}
+
+# also declare a function for UNscaling variables
+unscale_variables <- function(df, vars_to_unscale){
+  
+  # scale cols 3 to 17
+  df %>%
+    mutate_at(vars_to_unscale, 
+              function(x){
+                x * attr(x, 'scaled:scale') + attr(x, 'scaled:center')
+                
+              }) %>%
+    as_tibble() %>%
+    return()
+  
+}
+
+
+
+# 1d corrections ----------------------------------------------------------
 calc_delta_correction <- function(delta, data_v, weights, x0) {
   abs(x0-sum(invlogit(logit(data_v) + delta)*weights))
 }
@@ -24,8 +54,14 @@ weighted_correction <- function(data_v, weights, x0) {
   return(list(delta=delta, corrected=corrected))
 }
 
-# raking code -- should be put in YG library
-# internal raking algorithm
+
+# 2d corrections ----------------------------------------------------------
+
+
+
+
+# raking ------------------------------------------------------------------
+# raking code 
 rake0 <- function(vars, weight, maxit=100, eps=1e-7) {
   for (iter in 1:maxit) {
     convg <- 0
@@ -49,6 +85,7 @@ rake0 <- function(vars, weight, maxit=100, eps=1e-7) {
   }
   return(NULL)
 }
+
 # rake to multidimensional margins
 # targets is a list of tables with labeled dimnames
 # data is a dataframe containing the dimensions in targets
