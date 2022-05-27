@@ -18,7 +18,7 @@ source("scripts/helpers.R")
 mc.cores = parallel::detectCores()
 
 # global model settings
-REDO_MODELS = TRUE
+REDO_MODELS = F
 
 # STATE LEVEL -------------------------------------------------------------
 message("Wrangling data")
@@ -103,7 +103,7 @@ ces <- ces.raw %>%
         CC20_364a == 1 | CC20_364b == 1 ~ 'Trump',
         CC20_364a == 2 | CC20_364b == 2 ~ 'Biden', 
         CC20_364a == 3 | CC20_364b == 3 ~ 'Other',
-        T ~ 'Non_voter')
+        T ~ NA_character_)
     ),
     
     # validation variable
@@ -112,6 +112,7 @@ ces <- ces.raw %>%
     ### MISC
     # weight
     weight = as.numeric(commonweight),
+    weight_voters = as.numeric(vvweight),
     
     state_name = state_region_cw$state_name[match(inputstate_post,state_region_cw$state_fips)]
     
@@ -122,8 +123,9 @@ ces <- ces.raw %>%
   dplyr::select(state_name,
                 sex, age, race, edu, income5,
                 past_vote,
-                weight,
-  ) 
+                weight,weight_voters
+  )  %>%
+  filter(!is.na(past_vote))
 
 prop.table(table(is.na(ces.raw$CL_2020gvm)))
 prop.table(table(ces$past_vote == 'Non_voter'))
@@ -143,11 +145,8 @@ ces %>%
 ces %>%
   filter(past_vote != 'Non_voter') %>%
   group_by(past_vote) %>%
-  summarise(n = sum(weight,na.rm=T)) %>%
+  summarise(n = sum(weight_voters,na.rm=T)) %>%
   mutate(pct = n/sum(n))
-
-# remove any NA obs
-ces = na.omit(ces)
 
 # final survey cleanup 
 # check size of poll
@@ -165,7 +164,6 @@ ces.svy <- svydesign(~1,data=ces,weights=~weight)
 
 svymean(~past_vote,ces.svy)
 svymean(~past_vote,subset(ces.svy,past_vote != 'Non_voter'))
-
 svymean(~past_vote,subset(ces.svy,past_vote != 'Non_voter'))
 
 ces %>%
@@ -226,7 +224,7 @@ ces <- ces %>%
   ungroup()
 
 # model formula
-turnout_formula = likely_voter_dummy ~ # | weights(weight) ~
+turnout_formula = likely_voter_dummy ~ 
   # state-level smoothers
   state_biden_2020 + region_biden_2020 + state_vap_turnout_2016 + state_white_evangel + 
   state_median_income + state_urbanicity +
@@ -244,7 +242,7 @@ message("Running 2020 turnout MRP")
 
 if(REDO_MODELS | isFALSE(any(grepl("turnout_2020_model.rds" , list.files("models/"))))){
   turnout_2020_model <- brm(formula = turnout_formula,
-                            data = ces %>% sample_n(10000) %>% ungroup(),
+                            data = ces %>% sample_n(5000) %>% ungroup(),
                             family = bernoulli(link='logit'),
                             # priors
                             prior = c(set_prior("normal(0, 1)", class = "Intercept"),
@@ -307,7 +305,7 @@ targets %>%
 message("Running 2020 biden/trump/other vote MRP")
 
 # model formula
-vote_formula = past_vote ~ # | weights(weight) ~
+vote_formula = past_vote  | weights(weight_voters) ~
   # state-level smoothers
   state_biden_2020 + region_biden_2020 + state_vap_turnout_2016 + state_white_evangel + 
   state_median_income + state_urbanicity +
@@ -318,13 +316,12 @@ vote_formula = past_vote ~ # | weights(weight) ~
   (1 | race:edu) + (1 | sex:race) + 
   (1 | region) + (1 | state_name) # +
   # demographics that should vary by geography
-  # (1 + sex + age + race + income5 + edu | region/state_name)
-
+  # (1 + sex + age + race + income5 + edu | region/state_name) + race + s(state_biden_2020) 
 
 
 if(REDO_MODELS | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/"))))){
   pres_2020_model <- brm(formula = vote_formula,
-                         data = ces[ces$past_vote != 'Non_voter',] %>% sample_n(10000) %>% ungroup(),
+                         data = ces[ces$past_vote != 'Non_voter',] %>% sample_n(2000) %>% ungroup(),
                          family = categorical(link='logit', refcat = 'Other'),
                          # priors
                          prior = c(set_prior("normal(0, 1)", class = "Intercept",dpar='muBiden'),
@@ -490,37 +487,29 @@ expanded_targets_voters %>%
   summarise(n = sum(n)) %>%
   mutate(n=n/sum(n))
 
-
 # now we want to add back Non_voters where vote_type  <- 'Non_voter'
 targets <- expanded_targets_voters %>%
   bind_rows(expanded_targets[expanded_targets$vote_type == 'Non_voter',] %>%
               dplyr::select(-c(pres_2020_dem,pres_2020_rep,pres_2020_other))) %>%
-  rename(past_vote_16 = past_vote,
-         past_vote_20 = vote_type)
+  rename(past_vote = vote_type)
 
-unique(targets$past_vote_20)
+unique(targets$past_vote)
 sum(targets$n)
 
 # check topline results
 targets %>% 
-  dplyr::filter(past_vote_16 != 'Non_voter') %>%
-  group_by(past_vote_16) %>%
-  summarise(n = sum(n)) %>%
-  mutate(n=n/sum(n))
-
-targets %>% 
-  dplyr::filter(past_vote_20 != 'Non_voter') %>%
-  group_by(past_vote_20) %>%
+  dplyr::filter(past_vote != 'Non_voter') %>%
+  group_by(past_vote) %>%
   summarise(n = sum(n)) %>%
   mutate(n=n/sum(n))
 
 # check results by state
 targets %>% 
-  dplyr::filter(past_vote_20 != 'Non_voter') %>%
-  group_by(state_abb, past_vote_20) %>%
+  dplyr::filter(past_vote != 'Non_voter') %>%
+  group_by(state_abb, past_vote) %>%
   summarise(mrp_biden_2020 = sum(n)) %>%
   mutate(mrp_biden_2020 = mrp_biden_2020/sum(mrp_biden_2020)) %>%
-  dplyr::filter(past_vote_20 == 'Biden') %>%
+  dplyr::filter(past_vote == 'Biden') %>%
   left_join(as.data.frame(unscale_variables(covars,scale_unscale_vars))) %>%
   ggplot(.,aes(mrp_biden_2020,state_biden_2020)) +
   geom_point() +
@@ -529,1173 +518,47 @@ targets %>%
 
 # look at results by race
 targets %>% 
-  dplyr::filter(past_vote_16 != 'Non_voter') %>%
-  group_by(race,past_vote_16) %>%
-  summarise(n = sum(n)) %>%
-  mutate(n=n/sum(n))
-
-targets %>% 
-  dplyr::filter(past_vote_20 != 'Non_voter') %>%
-  group_by(race,past_vote_20) %>%
+  dplyr::filter(past_vote != 'Non_voter') %>%
+  group_by(race,past_vote) %>%
   summarise(n = sum(n)) %>%
   mutate(n=n/sum(n))
 
 
 # look at results by edu
 targets %>% 
-  dplyr::filter(past_vote_16 != 'Non_voter') %>%
-  group_by(college  = edu %in% c('College','Post-grad'),past_vote_16) %>%
-  summarise(n = sum(n)) %>%
-  mutate(n=n/sum(n))
-
-targets %>% 
-  dplyr::filter(past_vote_20 != 'Non_voter') %>%
-  group_by(college  = edu %in% c('College','Post-grad'),past_vote_20) %>%
+  dplyr::filter(past_vote != 'Non_voter') %>%
+  group_by(college  = edu %in% c('College','Post-grad'),past_vote) %>%
   summarise(n = sum(n)) %>%
   mutate(n=n/sum(n))
 
 # look at results by race and college
 targets %>% 
-  dplyr::filter(past_vote_16 != 'Non_voter') %>%
-  group_by(race,college  = edu %in% c('College','Post-grad'),past_vote_16) %>%
+  dplyr::filter(past_vote != 'Non_voter') %>%
+  group_by(race,college  = edu %in% c('College','Post-grad'),past_vote) %>%
   summarise(n = sum(n)) %>%
   mutate(n=n/sum(n)) %>%
-  spread(past_vote_16,n) %>%
-  mutate(clinton_margin = Clinton - Trump) %>%
-  select(-c(Clinton,Other,Trump)) %>%
-  left_join(
-    targets %>% 
-      dplyr::filter(past_vote_20 != 'Non_voter') %>%
-      group_by(race,college  = edu %in% c('College','Post-grad'),past_vote_20) %>%
-      summarise(n = sum(n)) %>%
-      mutate(n=n/sum(n)) %>%
-      spread(past_vote_20,n) %>%
-      mutate(biden_margin = Biden - Trump) %>%
-      select(-c(Biden,Other,Trump)) 
-  ) %>%
-  mutate(shift = clinton_margin - biden_margin)
+  spread(past_vote,n) %>%
+  mutate(biden_margin = Biden - Trump) %>%
+  select(-c(Biden,Other,Trump)) 
 
-
-# UNSCALE ALL THE DATASETS ------------------------------------------------
-# using unscale function
-targets <- unscale_variables(targets,scale_unscale_vars)
-ces <- unscale_variables(ces,scale_unscale_vars)
-covars <- unscale_variables(covars,scale_unscale_vars)
 
 # SAVE! -------------------------------------------------------------------
 message("Saving data")
 
 # save the predictions
 targets %>%
-  dplyr::select(state_fips,sex,age,race,edu,income5,past_vote_16,past_vote_20,n) %>%
-  write_rds(.,'output/mrp/state_level_targets_expanded_past_vote_16_20.rds',compress = 'gz')
+  dplyr::select(state_fips, sex, age, race, edu, income5, past_vote, n) %>%
+  write_rds(.,'data/mrp/acs_psframe_with_2020vote.rds',compress = 'gz')
 
-# # also save all the posterior draws from the model  
-#cell_pred_2020_vote.mat %>%
-#  write_rds(.,'output/mrp/model_samples/2020_vote_model_draws.rds',compress = 'gz')
 
-# now that the matrix is written, clear it from memory
-# rm(cell_pred_2020_vote.mat)
 gc()
 
-# POST-STRATIFY UP --------------------------------------------------------
-message('making graphs')
 
-targets <- read_rds('output/mrp/state_level_targets_expanded_past_vote_16_20.rds')
-
-targets_spread <- targets %>% 
-  group_by(state_fips, sex, age, race, edu, income5, past_vote_16)  %>%
+# what is hispanic vote in florida
+targets %>%
+  left_join(state_region_cw) %>%
+  filter(state_abb == 'FL',
+         past_vote != 'Non_voter') %>%
+  group_by(race, past_vote) %>%
   summarise(n = sum(n)) %>%
-  left_join(
-    targets %>% 
-      filter(past_vote_20 != 'Non_voter') %>%
-      group_by(state_fips, sex, age, race, edu, income5, past_vote_16) %>%
-      mutate(n = n / sum(n)) %>%
-      left_join(
-        targets %>% 
-          group_by(state_fips, sex, age, race, edu, income5, past_vote_16,
-                   voters = past_vote_20 != 'Non_voter') %>%
-          summarise(n = sum(n)) %>%
-          group_by(state_fips, sex, age, race, edu, income5, past_vote_16) %>%
-          mutate(likely_voter = n / sum(n)) %>%
-          dplyr::filter(voters == TRUE) %>%
-          ungroup() %>%
-          select(-c(voters,n))
-      ) %>%
-      spread(past_vote_20, n) 
-  ) 
-
-targets_spread[is.na(targets_spread)] <- 0
-
-weighted.mean(targets_spread$likely_voter, targets_spread$n)
-weighted.mean(targets_spread$Biden, (targets_spread$n * targets_spread$likely_voter))
-weighted.mean(targets_spread$Trump, (targets_spread$n * targets_spread$likely_voter))
-weighted.mean(targets_spread$Other, (targets_spread$n * targets_spread$likely_voter))
-
-targets_spread <- targets_spread %>% left_join(read_csv('data/state/state_region_crosswalk.csv')) %>% left_join(read_csv('data/state/state_covariates.csv'))
-targets_spread <- targets_spread %>% 
-  rename(past_vote = past_vote_16,
-         pres_2020_dem = Biden,
-         pres_2020_rep = Trump,
-         pres_2020_other = Other)
-
-
-# some turnout analyses
-targets_spread %>% 
-  group_by(race, turnout_2016 = past_vote!='Non_voter') %>% 
-  summarise(pct=sum(n)) %>% mutate(pct = pct/sum(pct)) %>% 
-  dplyr::filter(turnout_2016 == TRUE) %>%
-  left_join(targets_spread %>% 
-              group_by(race) %>%
-              summarise(turnout_2020 = sum(n*likely_voter) / sum(n)))
-
-targets_spread %>% 
-  group_by(age, turnout_2016 = past_vote!='Non_voter') %>% 
-  summarise(pct=sum(n)) %>% mutate(pct = pct/sum(pct)) %>% 
-  dplyr::filter(turnout_2016 == TRUE) %>%
-  left_join(targets_spread %>% 
-              group_by(age) %>%
-              summarise(turnout_2020 = sum(n*likely_voter) / sum(n)))
-
-
-# DEMOGRAPHIC ANALYSIS ----------------------------------------------------
-# some groups -- 
-# region
-targets_spread %>% 
-  dplyr::filter(past_vote!='Non_voter') %>% 
-  group_by(region,past_vote) %>% 
-  summarise(n=sum(n)) %>% mutate(n = n/sum(n)) %>% spread(past_vote,n) %>% mutate(net_2016=Clinton-Trump) %>% 
-  left_join(targets_spread %>% 
-              group_by(region) %>% summarise(biden = sum(pres_2020_dem*n*likely_voter)/sum(n*likely_voter),trump=sum(pres_2020_rep*n*likely_voter)/sum(n*likely_voter)) %>% mutate(net_2020 = biden-trump)) %>%
-  mutate(swing = net_2020 - net_2016)
-
-# age
-targets_spread %>% 
-  dplyr::filter(past_vote!='Non_voter') %>% 
-  group_by(age,past_vote) %>% 
-  summarise(n=sum(n)) %>% mutate(n = n/sum(n)) %>% spread(past_vote,n) %>% mutate(net_2016=Clinton-Trump) %>% 
-  left_join(targets_spread %>% 
-              group_by(age) %>% summarise(biden = sum(pres_2020_dem*n*likely_voter)/sum(n*likely_voter),trump=sum(pres_2020_rep*n*likely_voter)/sum(n*likely_voter)) %>% mutate(net_2020 = biden-trump)) %>%
-  mutate(swing = net_2020 - net_2016)
-
-# race
-targets_spread %>% 
-  dplyr::filter(past_vote!='Non_voter') %>% 
-  group_by(race,past_vote) %>% 
-  summarise(n=sum(n)) %>% mutate(n = n/sum(n)) %>% spread(past_vote,n) %>% mutate(net_2016=Clinton-Trump) %>% 
-  left_join(targets_spread %>% 
-              group_by(race) %>% summarise(biden = sum(pres_2020_dem*n*likely_voter)/sum(n*likely_voter),trump=sum(pres_2020_rep*n*likely_voter)/sum(n*likely_voter)) %>% mutate(net_2020 = biden-trump)) %>%
-  mutate(shift = net_2020 - net_2016)
-
-# race * sex 
-targets_spread %>% 
-  dplyr::filter(past_vote!='Non_voter') %>% 
-  group_by(race,sex,past_vote) %>% 
-  summarise(n=sum(n)) %>% mutate(n = n/sum(n)) %>% spread(past_vote,n) %>% mutate(net_2016=Clinton-Trump) %>% 
-  left_join(targets_spread %>% 
-              group_by(race,sex) %>% summarise(biden = sum(pres_2020_dem*n*likely_voter)/sum(n*likely_voter),trump=sum(pres_2020_rep*n*likely_voter)/sum(n*likely_voter)) %>% mutate(net_2020 = biden-trump)) 
-
-# race * education
-targets_spread %>% 
-  dplyr::filter(past_vote!='Non_voter') %>% 
-  mutate(edu = ifelse(edu %in% c('College','Post-grad'),'College','Non-college')) %>%
-  group_by(racexedu = paste(race,edu),past_vote) %>% 
-  summarise(n=sum(n)) %>% mutate(n = n/sum(n)) %>% spread(past_vote,n) %>% mutate(net_2016=Clinton-Trump) %>% 
-  left_join(targets_spread %>% 
-              mutate(edu = ifelse(edu %in% c('College','Post-grad'),'College','Non-college')) %>%
-              group_by(racexedu = paste(race,edu)) %>% summarise(biden = sum(pres_2020_dem*n*likely_voter)/sum(n*likely_voter),trump=sum(pres_2020_rep*n*likely_voter)/sum(n*likely_voter)) %>% mutate(net_2020 = biden-trump)) %>%
-  mutate(swing = net_2020 - net_2016)
-
-# race * education IN RED MIDWESTERN STATES
-targets_spread %>% 
-  dplyr::filter(past_vote!='Non_voter',state_abb %in% c('OH','MI','WI','PA','IA')) %>% 
-  mutate(edu = ifelse(edu %in% c('College','Post-grad'),'College','Non-college')) %>%
-  group_by(racexedu = paste(race,edu),past_vote) %>% 
-  summarise(n=sum(n)) %>% mutate(n = n/sum(n)) %>% spread(past_vote,n) %>% mutate(net_2016=Clinton-Trump) %>% 
-  left_join(targets_spread %>% 
-              dplyr::filter(state_abb %in% c('OH','MI','WI','PA','IA')) %>%
-              mutate(edu = ifelse(edu %in% c('College','Post-grad'),'College','Non-college')) %>%
-              group_by(racexedu = paste(race,edu)) %>% summarise(biden = sum(pres_2020_dem*n*likely_voter)/sum(n*likely_voter),trump=sum(pres_2020_rep*n*likely_voter)/sum(n*likely_voter)) %>% mutate(net_2020 = biden-trump)) %>%
-  mutate(swing = net_2020 - net_2016)
-
-
-# state predictions
-state_preds <- targets_spread %>%
-  mutate(n = n*likely_voter) %>%
-  group_by(state_abb,state_name) %>%
-  summarise(pres_2020_dem = sum(n*pres_2020_dem,na.rm=T)/sum(n,na.rm=T),
-            pres_2020_rep = sum(n*pres_2020_rep,na.rm=T)/sum(n,na.rm=T),
-            state_clinton_2016 = unique(state_clinton_2016),
-            state_trump_2016 = unique(state_trump_2016),
-            state_clinton_2016_margin = unique(state_clinton_2016_margin),
-            n_voters = sum(n)
-            
-  ) %>%
-  mutate(net_2020_dem = pres_2020_dem - pres_2020_rep) %>%
-  #dplyr::filter(state_abb != "DC") %>%
-  as.data.frame() 
-
-# plot change by state size
-state_preds %>%
-  mutate(sum2016 = state_clinton_2016 + state_trump_2016,
-         state_clinton_2016 = state_clinton_2016 / sum2016,
-         state_trump_2016 = state_trump_2016 / sum2016,
-         sum2020 = pres_2020_dem + pres_2020_rep,
-         pres_2020_dem = pres_2020_dem / sum2020,
-         pres_2020_rep = pres_2020_rep / sum2020) %>%
-  left_join(read.csv('data/state/elec_col_votes.csv') %>%
-              dplyr::select( state_abb,ec_votes)) %>%
-  summarise(
-    ec.weighted.swing = weighted.mean(
-      (pres_2020_dem - pres_2020_rep) - (state_clinton_2016 - state_trump_2016),
-      ec_votes
-    ),
-    voters.weighted.swing = weighted.mean(
-      (pres_2020_dem - pres_2020_rep) - (state_clinton_2016 - state_trump_2016),
-      n_voters
-    )
-  )
-
-
-state_preds %>%
-  mutate(sum2016 = state_clinton_2016 + state_trump_2016,
-         state_clinton_2016 = state_clinton_2016 / sum2016,
-         state_trump_2016 = state_trump_2016 / sum2016,
-         sum2020 = pres_2020_dem + pres_2020_rep,
-         pres_2020_dem = pres_2020_dem / sum2020,
-         pres_2020_rep = pres_2020_rep / sum2020) %>%
-  group_by(marginal_state = state_abb %in% c('AZ')) %>%
-  summarise(weighted.swing = weighted.mean(
-    (pres_2020_dem - pres_2020_rep) - (state_clinton_2016-state_trump_2016),
-    n_voters))
-
-
-state_preds %>%
-  mutate(sum2016 = state_clinton_2016 + state_trump_2016,
-         state_clinton_2016 = state_clinton_2016 / sum2016,
-         state_trump_2016 = state_trump_2016 / sum2016,
-         sum2020 = pres_2020_dem + pres_2020_rep,
-         pres_2020_dem = pres_2020_dem / sum2020,
-         pres_2020_rep = pres_2020_rep / sum2020) %>%
-  mutate(lean_2016 = state_clinton_2016 - 0.506,
-         lean_2020 = pres_2020_dem - weighted.mean(pres_2020_dem,n_voters),
-         swing_lean = lean_2020 - lean_2016) %>%
-  left_join(read.csv('data/state/elec_col_votes.csv') %>%
-              dplyr::select( state_abb,ec_votes)) %>% 
-  summarise(ec.weighted.swing_lean = weighted.mean(swing_lean,ec_votes),
-            voters.weighted.swing_lean = weighted.mean(swing_lean,n_voters),
-            swing_lean = mean(swing_lean))
-
-urbnmapr::states  %>%
-  left_join(
-    state_preds %>%
-      mutate(sum2016 = state_clinton_2016 + state_trump_2016,
-             state_clinton_2016 = state_clinton_2016 / sum2016,
-             state_trump_2016 = state_trump_2016 / sum2016,
-             sum2020 = pres_2020_dem + pres_2020_rep,
-             pres_2020_dem = pres_2020_dem / sum2020,
-             pres_2020_rep = pres_2020_rep / sum2020) %>%
-      mutate(lean_2016 = state_clinton_2016 - 0.506,
-             lean_2020 = pres_2020_dem - weighted.mean(pres_2020_dem,n_voters),
-             swing_lean = lean_2020 - lean_2016) 
-  ) %>%
-  ggplot(.,aes(x=long,y=lat)) +
-  geom_polygon(aes(fill = swing_lean>0 ,group=group),col='gray60') +
-  coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
-  theme_void() +
-  theme(legend.position = 'top',
-        plot.caption=element_text(hjust=0)) +
-  scale_fill_manual(values=c('TRUE' = 'blue', 'FALSE' = 'red'))
-
-# plot change from 2016 vs non-col white
-state_preds %>%
-  mutate(swing_16_20 = (pres_2020_dem-pres_2020_rep) - state_clinton_2016_margin) %>%
-  left_join(targets_spread %>%
-              dplyr::filter(past_vote!='Non_voter') %>%
-              mutate(edu = ifelse(edu %in% c('College','Post-grad'),'College','Non-college')) %>%
-              group_by(state_name,racexedu = paste(race,edu)) %>%
-              summarise(n=sum(n)) %>% mutate(pct_voters_white_noncol = n/sum(n)) %>%
-              dplyr::filter(racexedu == 'White, Non-Hispanic Non-college')) %>%
-  ggplot(.,aes(x=pct_voters_white_noncol*100,y=swing_16_20*100)) +
-  #geom_text(aes(label=state_abb)) +
-  geom_point() +
-  scale_size(range=c(1,4)) +
-  geom_smooth(method='lm') +
-  theme_minimal() +
-  theme(legend.position='none',panel.grid.minor = element_blank()) +
-  labs(x='Share of votes who are white and have no college degree',
-       y='',
-       subtitle='Predicted Joe Biden vote margin (2020) minus Hillary Clinton vote\nmargin (2016), percentage points, by state',
-       title='A re-realignment election',
-       caption='Source: ces/The Economist; US Census Bureau')
-#ggsave("temp.svg",width = 6,height=5)
-
-# how much does shift among whites explain shift in state?
-demo_state_table <- targets_spread %>% 
-  dplyr::filter(past_vote!='Non_voter') %>% 
-  group_by(state_abb,
-           race,
-           past_vote) %>% 
-  summarise(n=sum(n)) %>% mutate(n = n/sum(n)) %>% spread(past_vote,n) %>% mutate(net_2016=Clinton-Trump) %>% 
-  left_join(targets_spread %>% 
-              group_by(state_abb,
-                       race
-              ) %>% 
-              summarise(biden = sum(pres_2020_dem*n*likely_voter)/sum(n*likely_voter),
-                        trump=sum(pres_2020_rep*n*likely_voter)/sum(n*likely_voter)) %>% 
-              mutate(net_2020 = biden-trump)) %>%
-  ungroup() %>%
-  mutate(shift_among_group = net_2020 - net_2016) %>%
-  dplyr::select(state_abb,group=race,shift_among_group) %>%
-  left_join(state_preds %>%
-              mutate(swing_16_20 = (pres_2020_dem-pres_2020_rep) - state_clinton_2016_margin,
-                     state_biden_margin = pres_2020_dem-pres_2020_rep) %>%
-              dplyr::select(state_abb,n_voters,
-                            swing_16_20,state_clinton_2016_margin,state_biden_margin)) 
-
-
-cor(demo_state_table[demo_state_table$group == 'White, Non-Hispanic',]$shift_among_group,
-    demo_state_table[demo_state_table$group == 'White, Non-Hispanic',]$swing_16_20)
-
-
-# how much does shift among non-col whites explain shift in state?
-demo_state_table <- targets_spread %>% 
-  dplyr::filter(past_vote!='Non_voter') %>% 
-  mutate(edu = ifelse(edu %in% c('College','Post-grad'),'College','Non-college')) %>%
-  group_by(state_abb,
-           racexedu = ifelse(grepl('White',race),
-                             paste(race,edu),
-                             race),
-           past_vote) %>% 
-  summarise(n=sum(n)) %>% mutate(n = n/sum(n)) %>% spread(past_vote,n) %>% mutate(net_2016=Clinton-Trump) %>% 
-  left_join(targets_spread %>% 
-              mutate(edu = ifelse(edu %in% c('College','Post-grad'),'College','Non-college')) %>%
-              group_by(state_abb,
-                       racexedu = ifelse(grepl('White',race),
-                                         paste(race,edu),
-                                         race)
-              ) %>% 
-              summarise(biden = sum(pres_2020_dem*n*likely_voter)/sum(n*likely_voter),
-                        trump=sum(pres_2020_rep*n*likely_voter)/sum(n*likely_voter)) %>% 
-              mutate(net_2020 = biden-trump)) %>%
-  ungroup() %>%
-  mutate(shift_among_group = net_2020 - net_2016) %>%
-  dplyr::select(state_abb,group=racexedu,shift_among_group) %>%
-  left_join(state_preds %>%
-              mutate(swing_16_20 = (pres_2020_dem-pres_2020_rep) - state_clinton_2016_margin,
-                     state_biden_margin = pres_2020_dem-pres_2020_rep) %>%
-              dplyr::select(state_abb,n_voters,
-                            swing_16_20,state_clinton_2016_margin,state_biden_margin)) 
-
-## compare groups
-demo_state_table %>%
-  spread(group,shift_among_group) %>%
-  ggplot(.,aes(x=`White, Non-Hispanic College`, y=`White, Non-Hispanic Non-college`,
-               weight=n_voters,
-               col = state_abb %in% c('WI','MI','PA','MN','NH') )) +
-  geom_text(aes(label=state_abb)) +
-  geom_abline() + 
-  #geom_point(aes(size=n_voters)) +
-  scale_size(range=c(1,4)) +
-  geom_smooth(method='lm') +
-  theme_minimal() +
-  theme(legend.position='none',panel.grid.minor = element_blank()) +
-  scale_x_continuous(breaks=seq(-1,1,0.05)) +
-  scale_y_continuous(breaks=seq(-1,1,0.05)) +
-  geom_vline(xintercept = 0) +
-  geom_hline(yintercept = 0)
-
-## state swing ~ group swing
-lm(swing_16_20 ~ . -n_voters -state_clinton_2016_margin -state_biden_margin,
-   weights = n_voters,
-   data = demo_state_table %>%
-     spread(group,shift_among_group) %>%
-     dplyr::select(-c(state_abb))) %>% summary
-
-
-## plot
-demo_state_table %>%
-  ggplot(.,aes(x=shift_among_group, y=swing_16_20,col=group)) +
-  geom_text(aes(label=state_abb)) +
-  #geom_point(aes(size=n_voters)) +
-  scale_size(range=c(1,4)) +
-  geom_smooth(method='lm',show.legend = F) +
-  theme_minimal() +
-  theme(legend.position='top',
-        panel.grid.minor = element_blank()) +
-  guides('size'='none',
-         'color' = guide_legend(nrow=2)) +
-  scale_x_continuous(breaks=seq(-1,1,0.05)) +
-  scale_y_continuous(breaks=seq(-1,1,0.05)) +
-  labs(x='Swing in Biden versus Clinton vote margin among group, by state',
-       y='Swing in Biden versus Clinton vote margin, by state') +
-  geom_vline(xintercept = 0) +
-  geom_hline(yintercept = 0) #+ facet_wrap(~group,ncol=5)  
-
-# by age
-demo_state_table <- targets_spread %>% 
-  dplyr::filter(past_vote!='Non_voter') %>% 
-  group_by(state_abb,
-           age,
-           past_vote) %>% 
-  summarise(n=sum(n)) %>% mutate(n = n/sum(n)) %>% 
-  spread(past_vote,n) %>% mutate(net_2016=Clinton-Trump) %>% 
-  left_join(targets_spread %>% 
-              group_by(state_abb,age) %>% 
-              summarise(biden = sum(pres_2020_dem*n*likely_voter)/sum(n*likely_voter),
-                        trump=sum(pres_2020_rep*n*likely_voter)/sum(n*likely_voter)) %>% 
-              mutate(net_2020 = biden-trump)) %>%
-  ungroup() %>%
-  mutate(shift_among_group = net_2020 - net_2016) %>%
-  dplyr::select(state_abb,group=age,shift_among_group) %>%
-  left_join(state_preds %>%
-              mutate(swing_16_20 = (pres_2020_dem-pres_2020_rep) - state_clinton_2016_margin,
-                     state_biden_margin = pres_2020_dem-pres_2020_rep) %>%
-              dplyr::select(state_abb,n_voters,
-                            swing_16_20,state_clinton_2016_margin,state_biden_margin)) 
-
-## compare groups
-demo_state_table %>%
-  spread(group,shift_among_group) %>%
-  ggplot(.,aes(x=`18-29`, y=`65+`,
-               weight=n_voters,
-               col = state_abb %in% c('WI','MI','PA','MN','NH') )) +
-  geom_text(aes(label=state_abb,size=n_voters)) +
-  geom_abline() + 
-  #geom_point(aes(size=n_voters)) +
-  scale_size(range=c(1,4)) +
-  geom_smooth(method='lm') +
-  theme_minimal() +
-  theme(legend.position='none',panel.grid.minor = element_blank()) +
-  scale_x_continuous(breaks=seq(-1,1,0.05)) +
-  scale_y_continuous(breaks=seq(-1,1,0.05)) +
-  geom_vline(xintercept = 0) +
-  geom_hline(yintercept = 0)
-
-## state swing ~ group swing
-lm(swing_16_20 ~ . -n_voters,
-   weights = n_voters,
-   data = demo_state_table %>%
-     spread(group,shift_among_group) %>%
-     dplyr::select(-c(state_abb))) %>% summary
-
-## plot
-demo_state_table %>%
-  ggplot(.,aes(x=shift_among_group, y=swing_16_20,col=group)) +
-  geom_text(aes(label=state_abb,size=n_voters)) +
-  #geom_point(aes(size=n_voters)) +
-  scale_size(range=c(1,4)) +
-  geom_smooth(method='lm',show.legend = F) +
-  theme_minimal() +
-  theme(legend.position='top',
-        panel.grid.minor = element_blank()) +
-  guides('size'='none',
-         'color' = guide_legend(nrow=1)) +
-  scale_x_continuous(breaks=seq(-1,1,0.05)) +
-  scale_y_continuous(breaks=seq(-1,1,0.05)) +
-  labs(x='Swing in Biden versus Clinton vote margin among group, by state',
-       y='Swing in Biden versus Clinton vote margin, by state') +
-  geom_vline(xintercept = 0) +
-  geom_hline(yintercept = 0) #+ facet_wrap(~group,ncol=5)  
-
-## young people more anti-biden in more liberal places?
-demo_state_table %>%
-  dplyr::filter(group %in% c("18-29","65+"),state_abb != 'DC') %>%
-  ggplot(.,aes(x=state_clinton_2016_margin,y=shift_among_group)) +
-  geom_text(data=demo_state_table %>%
-              dplyr::filter(group %in% c("18-29","65+"),state_abb != 'DC') %>%
-              dplyr::filter(state_abb %in% c('CA','TX','MI','WI','WY')),
-            aes(label=state_abb),col='red',size=5) +
-  geom_point(size=2) +
-  #scale_size(range=c(2,4)) +
-  geom_smooth(method='lm',show.legend = F,linetype=2) +
-  theme_minimal() +
-  theme(legend.position='top',
-        panel.grid.minor = element_blank(),
-        plot.caption = element_text(hjust=0)) +
-  guides('size'='none',
-         'color' = guide_legend(nrow=1)) +
-  scale_x_continuous(breaks=seq(-1,1,0.1),#limits = c(-0.5,0.4),
-                     labels = function(x){x*100}) +
-  scale_y_continuous(breaks=seq(-1,1,0.1),#limits = c(-0.3,0.),
-                     labels = function(x){x*100},
-                     position='right',) +
-  facet_wrap(~group,ncol=1) +
-  labs(x="Hillary Clinton's vote margin in 2016, percentage points",
-       y='',
-       subtitle="Joe Biden's predicted vote margin against Donald\nTrump in 2020 relative to Hillary Clinton's in 2016\nBy state and age group",
-       caption="Source: ces/The Economist") +
-  geom_vline(xintercept = 0) +
-  geom_hline(yintercept = 0)
-
-#ggsave("~/Desktop/age_graph.svg",width=5,height=6)
-#ggsave("~/Desktop/age_graph.pdf",width=5,height=6)
-#demo_state_table %>%
-# spread(group,shift_among_group) %>%
-#  dplyr::select(state_abb,state_clinton_2016_margin,`18-29`,`65+`) %>%
-#  write_csv('~/Desktop/age_data.csv')
-
-
-# look at 2016 v 20 for a bunch of different demo groups
-
-# STATE-LEVEL ANALYSIS ----------------------------------------------------
-# plot in a grid
-pdf('figures/2020_vote_calibration.pdf',width=12,height=10)
-grid.arrange(ncol=2,
-             ggplot(state_preds, aes(x=state_trump_2016, y=pres_2020_rep)) +
-               stat_smooth(geom='line',col='blue',fullrange=T,linetype=2,method = 'lm') +
-               geom_abline() +
-               geom_text(aes(label=state_abb)) +
-               labs(subtitle = sprintf("r=%s",round(cor(state_preds$pres_2020_rep,
-                                                        state_preds$state_trump_2016),3))) +
-               coord_cartesian(ylim=c(0.2,0.8),xlim=c(0.2,0.8)) +
-               theme_minimal(),
-             
-             ggplot(state_preds, aes(x=state_clinton_2016, y=pres_2020_dem)) +
-               stat_smooth(geom='line',col='blue',fullrange=T,linetype=2,method = 'lm') +
-               geom_abline() +
-               geom_text(aes(label=state_abb)) +
-               labs(subtitle = sprintf("r=%s",round(cor(state_preds$pres_2020_dem,
-                                                        state_preds$state_clinton_2016),3))) +
-               coord_cartesian(ylim=c(0.2,0.8),xlim=c(0.2,0.8)) +
-               theme_minimal(),
-             
-             ggplot(state_preds, aes(x=state_clinton_2016_margin, y=net_2020_dem)) +
-               stat_smooth(geom='line',col='blue',fullrange=T,linetype=2,method = 'lm') +
-               geom_abline(slope=1) +
-               geom_text(aes(label=state_abb)) +
-               labs(subtitle = sprintf("r=%s",round(cor(state_preds$state_clinton_2016_margin,
-                                                        state_preds$net_2020_dem),3))) +
-               coord_cartesian(ylim=c(-0.5,0.5),xlim=c(-0.5,0.5)) +
-               theme_minimal(),
-             
-             ggplot(state_preds, aes(x=state_clinton_2016_margin,y=net_2020_dem - state_clinton_2016_margin)) +
-               stat_smooth(geom='line',col='blue',fullrange=T,linetype=2,method = 'lm') +
-               geom_hline(yintercept = 0)+
-               geom_text(aes(label=state_abb)) +
-               labs(subtitle = sprintf("r=%s",round(cor(state_preds$state_clinton_2016_margin,
-                                                        state_preds$net_2020_dem - state_preds$state_clinton_2016_margin),3))) +
-               theme_minimal()
-             
-)
-dev.off();Sys.sleep(2)
-
-# sanity check -- weighted avg of approval and disapproval compared to ces
-state_check <- targets_spread %>%
-  mutate(n = n*likely_voter) %>%
-  group_by(state_abb, state_name) %>%
-  summarise(pres_2020_dem = sum(n*pres_2020_dem,na.rm=T)/sum(n,na.rm=T),
-            pres_2020_rep = sum(n*pres_2020_rep,na.rm=T)/sum(n,na.rm=T),
-            pres_2020_other = sum(n*pres_2020_other,na.rm=T)/sum(n,na.rm=T),
-            n = sum(n)) %>%
-  as.data.frame() %>%
-  mutate(weight = n/sum(n))
-
-weighted.mean(state_check$pres_2020_dem,state_check$weight)
-weighted.mean(state_check$pres_2020_rep,state_check$weight)
-weighted.mean(state_check$pres_2020_other,state_check$weight)
-
-svymean(~past_vote, ces.svy)
-svymean(~past_vote, subset(ces.svy, past_vote!='Non_voter')) #subset(ces.svy, voter_reg == 1))
-svymean(~past_vote, subset(ces.svy, past_vote!='Non_voter'&past_vote!='Non_voter')) #subset(ces.svy, voter_reg == 1))
-svymean(~past_vote, subset(ces.svy, past_vote!='Non_voter'&past_vote=='Non_voter')) #subset(ces.svy, voter_reg == 1))
-
-
-# check state observations
-svytable(~past_vote+state_name,
-         subset(ces.svy, past_vote!='Non_voter')) %>% #subset(ces.svy, voter_reg == 1)) %>%
-  prop.table(margin=2) %>%
-  t() %>%
-  as_tibble() %>%
-  spread(past_vote,n) %>%
-  set_names(.,c('state_name','dem_disag','Non_voter','other','rep_disag')) %>%
-  left_join(state_check) %>%
-  mutate(diff = pres_2020_dem - dem_disag,
-         #diff = trump_disapprove - disapprove_disag
-  ) %>%
-  pull(diff) %>% (function(x=.){sqrt(mean(x^2))})
-
-# mrp map
-map <- urbnmapr::states %>% 
-  left_join(state_preds %>%
-              mutate(net_2020_dem = pres_2020_dem-pres_2020_rep) %>%
-              # mutate(net_2020_dem = case_when(state_abb %in% c('CO','OR') ~ net_2020_dem + 0.03,
-              #                                 state_abb %in% c('AK','NC','MS','IA') ~ net_2020_dem - 0.02,
-              #                                 TRUE ~ net_2020_dem )) %>%
-              mutate(net_2020_dem_class = cut(-1*(net_2020_dem-0.00),
-                                              breaks=c(-1, -0.2, -0.1, -0.05, 0,  0.05, 0.1, 0.2, 1),
-                                              labels=c("Democratic +20 or higher",
-                                                       "+20 to +10",
-                                                       "+10 to +5",
-                                                       "Even to Democratic +5",
-                                                       "Even to Republican +5",
-                                                       #"Even",
-                                                       "+5 to +10",
-                                                       "+10 to +20",
-                                                       "Republican +20 or higher")))  #%>%
-            #dplyr::select(state_abb,net_2020_dem,net_2020_dem_class) %>%
-            #write_csv("temp.csv")
-  ) %>% 
-  ggplot(.,aes(x=long,y=lat)) +
-  geom_polygon(aes(fill = net_2020_dem_class ,group=group),col='gray60') +
-  scale_fill_manual(name="",
-                    values=c("Democratic +20 or higher" = "#21618C",
-                             "+20 to +10"="#2E86C1",
-                             "+10 to +5" = "#A9CCE3",
-                             "Even to Democratic +5" = "#D6EAF8",
-                             "Even to Republican +5"= "#FADBD8", 
-                             #"Even" = "gray80",
-                             "+5 to +10" = "#EC7063",
-                             "+10 to +20"="#CB4335",
-                             "Republican +20 or higher" = "#943126")) +
-  labs(title="2020 presidential vote by state",
-       subtitle="Among likely voters",
-       caption = "Source: ces/The Economist") +
-  coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
-  theme_void() +
-  theme(legend.position = 'top',
-        plot.caption=element_text(hjust=0))
-
-print(map)
-
-ggsave(plot=map,filename = "figures/2020_vote_by_state.pdf",width=10,height=10)
-
-
-# trump approval by demographic breakdown
-bkdown <- targets_spread %>%
-  mutate(n = n*likely_voter) %>%
-  group_by(state_abb,state_name,region,race,edu) %>%
-  summarise(pres_2020_dem = sum(n*pres_2020_dem,na.rm=T)/sum(n,na.rm=T),
-            pres_2020_rep = sum(n*pres_2020_rep,na.rm=T)/sum(n,na.rm=T),
-            n=sum(n)) %>%
-  mutate(net_2020_dem = pres_2020_dem - pres_2020_rep) %>%
-  as.data.frame() %>%
-  mutate(race = factor(race,c("Black, Non-Hispanic","Hispanic","Other, Non-Hispanic","White, Non-Hispanic")),
-         edu = factor(edu, c('No HS','HS grad','Some college','College','Post-grad'))) %>%
-  mutate(scale = n/sum(n))
-
-
-bdown_map <- urbnmapr::states %>% 
-  left_join(bkdown) %>% 
-  mutate(net_2020_dem_class = cut(-1*(net_2020_dem-0.00),
-                                  breaks=c(-1, -0.2, -0.1, -0.05, 0, 0.05, 0.1, 0.2, 1),
-                                  labels=c("Democratic +20 or higher",
-                                           "+20 to +10",
-                                           "+10 to +5",
-                                           "Even to Democratic +5",
-                                           "Even to Republican +5",
-                                           "+5 to +10",
-                                           "+10 to +20",
-                                           "Republican +20 or higher"))) %>%
-  na.omit() %>%
-  ggplot(.,aes(x=long,y=lat)) +
-  geom_polygon(aes(fill = net_2020_dem_class ,group=group),col='gray60') +
-  scale_fill_manual(name="",
-                    values=c("Democratic +20 or higher" = "#21618C",
-                             "+20 to +10"="#2E86C1",
-                             "+10 to +5" = "#A9CCE3",
-                             "Even to Democratic +5" = "#D6EAF8",
-                             "Even to Republican +5"= "#FADBD8", 
-                             "+5 to +10" = "#EC7063",
-                             "+10 to +20"="#CB4335",
-                             "Republican +20 or higher" = "#943126")) +
-  labs(title="2020 presidential vote by state",
-       subtitle="Among likely voters",
-       caption = "Source: ces/The Economist") +
-  coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
-  theme_void() +
-  theme(legend.position = 'top',
-        plot.caption=element_text(hjust=0)) +
-  facet_wrap(~race+edu,ncol=5) 
-
-
-pdf("figures/2020_vote_by_state_by_demog.pdf",width=14,height=9)
-print(bdown_map)
-dev.off();Sys.sleep(2)
-
-# some scaling?
-bkdown <- targets_spread %>%
-  mutate(n = n*likely_voter) %>%
-  group_by(state_abb,state_name,region,
-           #race=ifelse(race=='White, Non-Hispanic','White','Non-white'),
-           race,
-           edu) %>%
-  summarise(pres_2020_dem = sum(n*pres_2020_dem,na.rm=T)/sum(n,na.rm=T),
-            pres_2020_rep = sum(n*pres_2020_rep,na.rm=T)/sum(n,na.rm=T),
-            n=sum(n)) %>%
-  mutate(net_2020_dem = pres_2020_dem - pres_2020_rep) %>%
-  as.data.frame() %>%
-  mutate(race = factor(race,c("Black, Non-Hispanic","Hispanic","Other, Non-Hispanic","White, Non-Hispanic")),
-         #race = factor(race,c('Non-white','White')),
-         edu = factor(edu, c('No HS','HS grad','Some college','College','Post-grad'))) %>%
-  mutate(scale = n/sum(n)) %>% 
-  mutate(net_2020_dem_class = cut(-1*(net_2020_dem-0.00),
-                                  breaks=c(-1, -0.2, -0.1, -0.05, 0, 0.05, 0.1, 0.2, 1),
-                                  labels=c("Democratic +20 or higher",
-                                           "+20 to +10",
-                                           "+10 to +5",
-                                           "Even to Democratic +5",
-                                           "Even to Republican +5",
-                                           "+5 to +10",
-                                           "+10 to +20",
-                                           "Republican +20 or higher")))
-
-
-# map data
-bdown_map <- urbnmapr::states %>% 
-  left_join(bkdown) 
-
-# centroids
-states <- urbnmapr::states
-
-cntrd <- function(x) {
-  data.frame(
-    centroid(as.matrix(x[,c("long", "lat")]))
-  ) %>%
-    mutate(state_abb = str_to_upper(unique(x$state_abbv))) %>%
-    rename(long=lon)
-}
-
-centroids <- by(states, states$group, cntrd)  %>% do.call('bind_rows',.) %>%
-  group_by(state_abb) %>%
-  dplyr::filter(row_number() == 1) 
-
-
-bkdown_centroids <- bkdown %>%
-  left_join(centroids)
-
-# combine
-bdown_map_scaled <- ggplot() +
-  geom_polygon(data = bdown_map,# %>% dplyr::filter(grepl('East North Central',region)),
-               aes(x=long,y=lat,group=group),col='gray60',fill=NA)  +
-  # add points on top +
-  geom_point(data=bkdown_centroids,# %>% dplyr::filter(grepl('East North Central',region)),
-             aes(x=long,y=lat,col = net_2020_dem_class, 
-                 size = n)) +
-  scale_size(range=c(0.1,5)) + 
-  # now colors
-  scale_color_manual(name="",
-                     values=c("Democratic +20 or higher" = "#21618C",
-                              "+20 to +10"="#2E86C1",
-                              "+10 to +5" = "#A9CCE3",
-                              "Even to Democratic +5" = "#D6EAF8",
-                              "Even to Republican +5"= "#FADBD8", 
-                              "+5 to +10" = "#EC7063",
-                              "+10 to +20"="#CB4335",
-                              "Republican +20 or higher" = "#943126")) +
-  labs(title="2020 presidential vote by state",
-       subtitle="Among likely voters",
-       caption = "Source: ces/The Economist") +
-  coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
-  guides('col'=guide_legend(override.aes = list(size = 10)),
-         'size'='none') +
-  theme_void() +
-  theme(legend.position = 'top',
-        plot.caption=element_text(hjust=0)) +
-  facet_wrap(~race+edu,ncol=5) 
-
-pdf("figures/2020_vote_by_state_by_demog_scaled.pdf",width=14,height=9)
-print(bdown_map_scaled)
-dev.off();Sys.sleep(2)
-
-
-# some scaling? not breakdown this time
-state_bdown <- targets_spread %>%
-  mutate(n = n*likely_voter) %>%
-  group_by(state_abb,state_name,region) %>%
-  summarise(pres_2020_dem = sum(n*pres_2020_dem,na.rm=T)/sum(n,na.rm=T),
-            pres_2020_rep = sum(n*pres_2020_rep,na.rm=T)/sum(n,na.rm=T),
-            n=sum(n)) %>%
-  mutate(net_2020_dem = pres_2020_dem - pres_2020_rep) %>%
-  as.data.frame() %>%
-  mutate(scale = n/sum(n)) %>% 
-  mutate(net_2020_dem_class = cut(-1*(net_2020_dem-0.00),
-                                  breaks=c(-1, -0.2, -0.1, -0.05, 0, 0.05, 0.1, 0.2, 1),
-                                  labels=c("Democratic +20 or higher",
-                                           "+20 to +10",
-                                           "+10 to +5",
-                                           "Even to Democratic +5",
-                                           "Even to Republican +5",
-                                           "+5 to +10",
-                                           "+10 to +20",
-                                           "Republican +20 or higher")))
-
-
-# map data
-state_map <- urbnmapr::states %>% 
-  left_join(state_bdown) 
-
-# centroids
-states <- urbnmapr::states
-
-cntrd <- function(x) {
-  data.frame(
-    centroid(as.matrix(x[,c("long", "lat")]))
-  ) %>%
-    mutate(state_abb = str_to_upper(unique(x$state_abbv))) %>%
-    rename(long=lon)
-}
-
-centroids <- by(states, states$group, cntrd)  %>% 
-  do.call('bind_rows',.) %>%
-  group_by(state_abb) %>%
-  dplyr::filter(row_number() == 1) 
-
-
-state_bdown_centroids <- state_bdown %>%
-  left_join(centroids)
-
-# non-overlapping centroids
-# combine
-bdown_map_scaled <- ggplot() +
-  geom_polygon(data = state_map,# %>% dplyr::filter(grepl('East North Central',region)),
-               aes(x=long,y=lat,group=group),col='gray60',fill=NA)  +
-  # add points on top +
-  geom_point(data=state_bdown_centroids,# %>% dplyr::filter(grepl('East North Central',region)),
-             aes(x=long,y=lat,col = net_2020_dem_class, 
-                 size = n)) +
-  scale_size(range=c(0.1,20)) + 
-  # now colors
-  scale_color_manual(name="",
-                     values=c("Democratic +20 or higher" = "#21618C",
-                              "+20 to +10"="#2E86C1",
-                              "+10 to +5" = "#A9CCE3",
-                              "Even to Democratic +5" = "#D6EAF8",
-                              "Even to Republican +5"= "#FADBD8", 
-                              "+5 to +10" = "#EC7063",
-                              "+10 to +20"="#CB4335",
-                              "Republican +20 or higher" = "#943126")) +
-  labs(title="2020 presidential vote by state",
-       subtitle="Among likely voters",
-       caption = "Source: ces/The Economist") +
-  coord_map(projection = "albers", lat0 = 39, lat1 = 45) +
-  guides('col'=guide_legend(override.aes = list(size = 10)),
-         'size'='none') +
-  theme_void() +
-  theme(legend.position = 'top',
-        plot.caption=element_text(hjust=0)) 
-
-pdf("figures/2020_vote_by_state_scaled.pdf",width=10,height=10)
-print(bdown_map_scaled)
-dev.off();Sys.sleep(2)
-
-
-
-# OVER TIME ---------------------------------------------------------------
-
-# ---- LEFT OFF HERE ----
-
-
-# UNCERTAINTY -------------------------------------------------------------
-
-if(FALSE){
-  message('Generating confidence intervals')
-  # the voter turnout draws are stord in the `cell_pred_2020_turnout.mat` object
-  
-  # and here are the vote choice probs
-  cell_pred_2020_vote.mat.dem <- cell_pred_2020_vote.mat[,,1]
-  cell_pred_2020_vote.mat.rep <- cell_pred_2020_vote.mat[,,3]
-  
-  temp_targets_spread <- targets_spread
-  
-  # get pred and model CI for each state
-  mcmc_state_preds <- pblapply(1:nrow(cell_pred_2020_vote.mat),
-                               cl = parallel::detectCores()-1,
-                               function(x){
-                                 
-                                 # change voter population to that implied by get turnout draw
-                                 temp_targets_spread$n <- temp_targets_spread$n * cell_pred_2020_turnout.mat[x,]
-                                 
-                                 # get vote draws
-                                 temp_targets_spread$pres_2020_dem <- cell_pred_2020_vote.mat.dem[x,]
-                                 temp_targets_spread$pres_2020_rep <- cell_pred_2020_vote.mat.rep[x,]
-                                 
-                                 # check
-                                 state_preds_temp <- temp_targets_spread %>%
-                                   group_by(state_name) %>%
-                                   summarise(pres_2020_dem = sum(n*pres_2020_dem,na.rm=T)/sum(n,na.rm=T),
-                                             pres_2020_rep = sum(n*pres_2020_rep,na.rm=T)/sum(n,na.rm=T),
-                                             n=sum(n))
-                                 
-                                 return(state_preds_temp %>% mutate(iter=x))
-                                 
-                               })
-  
-  write_rds(mcmc_state_preds,'output/mrp/model_samples/2020_vote_uncertainty.rds',compress = 'gz')
-  
-  mcmc_state_preds <- read_rds('output/mrp/model_samples/2020_vote_uncertainty.rds')
-  
-  # get means and plot
-  uncertainty.gg <- mcmc_state_preds %>%
-    do.call('bind_rows',.) %>%
-    dplyr::filter(!state_name %in% c("District of Columbia")) %>% #,"Utah"
-    group_by(state_name) %>%
-    mutate(net_2020_dem = pres_2020_dem - pres_2020_rep) %>%
-    # mutate(net_2020_dem = case_when(state_name %in% c('Colorado','Oregon') ~ net_2020_dem + 0.03,
-    #                                 state_name %in% c('Alaska','North Carolina','Utah','Iowa') ~ net_2020_dem - 0.02,
-    #                                 TRUE ~ net_2020_dem )) %>%
-    summarise(net_dem_mean = median(net_2020_dem),
-              net_dem_upper = quantile(net_2020_dem,0.9),
-              net_dem_lower = quantile(net_2020_dem,0.1),
-              net_dem_upper95 = quantile(net_2020_dem,0.975),
-              net_dem_lower95 = quantile(net_2020_dem,0.025)) %>%
-    #dplyr::filter(abs(net_dem_mean) < 0.2) %>%
-    ggplot(.,aes(y=reorder(state_name,net_dem_mean))) +
-    geom_vline(xintercept = 0) +
-    #geom_label(aes(x=net_dem_mean,label=state_name)) +
-    geom_point(aes(x=net_dem_mean)) + 
-    geom_segment(aes(x=net_dem_lower,xend=net_dem_upper,
-                     yend=state_name),size=1) +
-    geom_segment(aes(x=net_dem_lower95,xend=net_dem_upper95,
-                     yend=state_name),size=0.5) +
-    scale_x_continuous(breaks=seq(-1,1,0.05),
-                       labels=function(x){round(x*100)}) +
-    theme_minimal() + 
-    theme(panel.grid.minor = element_blank())  +
-    labs(x='Net Democratic 2020 presidential vote',
-         y='')
-  
-  
-  pdf("figures/2020_vote_by_state_credibility.pdf",width=8,height=8)
-  print(uncertainty.gg)
-  dev.off();Sys.sleep(2)
-  
-}
-
-
-# elec college sims
-if(FALSE){
-  message("Generating electoral college scenarios")
-  # count evs
-  simulated_evs <- mcmc_state_preds %>%
-    do.call('bind_rows',.) %>%
-    left_join(read_csv('data/state/elec_col_votes.csv')) %>%
-    group_by(iter) %>%
-    summarise(dem_ev = sum((pres_2020_dem > pres_2020_rep)*ec_votes),
-              dem_pop_vote_margin = (sum(pres_2020_dem*n)/sum(n) - sum(pres_2020_rep*n)/sum(n)))
-  
-  # probabilities
-  nrow(simulated_evs[simulated_evs$dem_ev>=270,])/nrow(simulated_evs)
-  nrow(simulated_evs[simulated_evs$dem_pop_vote_margin>=0,])/nrow(simulated_evs)
-  
-  # plot
-  ec_histogram.gg <- ggplot(simulated_evs,aes(x=dem_ev,
-                                              fill=ifelse(dem_ev>=270,'Democratic','Republican'))) + 
-    geom_histogram(aes(y = ..count..),
-                   binwidth=2) +
-    scale_x_continuous(breaks=seq(0,560,30)) +
-    scale_y_continuous(breaks=seq(0,nrow(simulated_evs),nrow(simulated_evs) / 100),
-                       labels=function(x){sprintf('%s%%',round(x/nrow(simulated_evs)*100,2))}) +
-    theme_minimal() +
-    scale_fill_manual(name='Electoral College victory',
-                      values=c("Democratic"='blue','Republican'='red')) +
-    theme(legend.position = 'top',
-          legend.justification = 'left',
-          panel.grid.minor = element_blank()) +
-    labs(x='Democratic Electoral College votes',
-         y='Probability',
-         caption='Not simulating any non-sampling error')
-  
-  pdf('figures/2020_vote_electoral_college_histogram.pdf',width=8,height=6)
-  print(ec_histogram.gg)
-  dev.off();Sys.sleep(2)
-  
-  # pop vote histogram
-  # plot
-  popvote_histogram.gg <- ggplot(simulated_evs,aes(x=dem_pop_vote_margin,
-                                                   fill=case_when(dem_ev>=270 & dem_pop_vote_margin>0 ~ 'Dem. EC & Dem. Pop. Vote',
-                                                                  dem_ev>=270 & dem_pop_vote_margin<0 ~ 'Dem. EC & Rep. Pop. Vote',
-                                                                  dem_ev<270 & dem_pop_vote_margin>0 ~ 'Rep. EC & Dem. Pop. Vote',
-                                                                  dem_ev<270 & dem_pop_vote_margin<0 ~ 'Rep. EC & Rep. Vote'))) + 
-    geom_histogram(aes(y = ..count..),
-                   binwidth=0.001) +
-    scale_x_continuous(breaks=seq(-1,1,0.01))+
-    scale_y_continuous(breaks=seq(0,nrow(simulated_evs),nrow(simulated_evs) / 100),
-                       labels=function(x){sprintf('%s%%',round(x/nrow(simulated_evs)*100))}) +
-    theme_minimal() +
-    scale_fill_manual(name='Scenario',
-                      values=c('Dem. EC & Dem. Pop. Vote'='#2E86C1',
-                               'Dem. EC & Rep. Pop. Vote'='#85C1E9',
-                               'Rep. EC & Dem. Pop. Vote'='#F1948A',
-                               'Rep. EC & Rep. Vote'='#CB4335')) +
-    theme(legend.position = 'top',
-          legend.justification = 'left',
-          panel.grid.minor = element_blank()) +
-    labs(x='Democratic popular vote margin',
-         y='Probability')
-  
-  pdf('figures/2020_vote_popular_vote_histogram.pdf',width=8,height=6)
-  print(popvote_histogram.gg)
-  dev.off();Sys.sleep(2)
-  
-  # try different deltas for generic dem punish
-  sims_w_delta <- lapply(seq(-0.05,0,0.01),
-                         function(x){
-                           simulated_evs <- mcmc_state_preds %>%
-                             do.call('bind_rows',.) %>%
-                             left_join(read_csv('data/state/elec_col_votes.csv')) %>%
-                             group_by(iter) %>%
-                             summarise(dem_ev = sum((pres_2020_dem+x > pres_2020_rep)*ec_votes)) %>%
-                             mutate(delta = x)
-                           
-                         }) %>%
-    do.call('bind_rows',.)
-  
-  # plot
-  avg_d_margin <- mean(simulated_evs$dem_pop_vote_margin)
-  
-  hypo_ec.gg <- ggplot(sims_w_delta,aes(x=dem_ev,
-                                        fill=ifelse(dem_ev>=270,'Democratic','Republican'))) + 
-    geom_vline(xintercept=270,linetype=2,col='gray60') +
-    geom_histogram(aes(y = ..count..),
-                   binwidth=2) +
-    scale_x_continuous(breaks=seq(0,560,30)) +
-    scale_y_continuous(labels=function(x){sprintf('%s%%',round(x/max(sims_w_delta$iter)*100))}) +
-    theme_minimal() +
-    scale_fill_manual(name='Electoral College victory',
-                      values=c("Democratic"='blue','Republican'='red')) +
-    theme(legend.position = 'top',
-          legend.justification = 'left',
-          panel.grid.minor = element_blank()) +
-    labs(title='Hypothetical Electoral College results, 2020',
-         subtitle=sprintf('The generic Democratic candidate is polling at %s percentage points today',
-                          paste0(ifelse(avg_d_margin >= 0 ,'+',''),
-                                 round(avg_d_margin*100))),
-         x='Democratic Electoral College votes',
-         y='Probability') +
-    facet_wrap(~delta,
-               labeller = labeller(delta = function(x){
-                 sprintf("If the eventual Democratic nominee\npolls at %s percentage points",
-                         paste0(ifelse(round((as.numeric(x) + avg_d_margin)*100) >= 0 ,'+',''),
-                                round((as.numeric(x) + avg_d_margin)*100)))
-               }))
-  
-  pdf('figures/2020_vote_hypothetical_ec_histograms.pdf',width=8,height=6)
-  print(hypo_ec.gg)
-  dev.off();Sys.sleep(2)
-  
-  # EVs by popular vote, simulations with 3 points of national non-sampling error on either side
-  sims_w_delta_popvotes <- lapply(seq(-0.03,0.03,0.01),
-                                  function(x){
-                                    mcmc_state_preds %>%
-                                      do.call('bind_rows',.) %>%
-                                      left_join(read_csv('data/state/elec_col_votes.csv')) %>%
-                                      mutate(pres_2020_dem = pres_2020_dem - x) %>%
-                                      group_by(iter) %>%
-                                      summarise(dem_pop_vote_margin = (sum(pres_2020_dem*n)/sum(n) - 
-                                                                         sum(pres_2020_rep*n)/sum(n)),
-                                                dem_ev = sum((pres_2020_dem  > pres_2020_rep)*ec_votes),
-                                                dem_pop_votes = sum(pres_2020_dem*n),
-                                                rep_pop_votes = sum(pres_2020_rep*n))  %>%
-                                      mutate(delta=x)
-                                    
-                                  }) %>%
-    do.call('bind_rows',.)
-  
-  # plot
-  vote_seat_curve.gg <- ggplot(sims_w_delta_popvotes,
-                               aes(x=dem_pop_vote_margin, y=dem_ev,
-                                   col=ifelse(dem_ev>=270,'Democratic','Republican'))) + 
-    geom_point(aes(alpha=ifelse(delta==0,1,0.1))) +
-    scale_alpha(range=c(0.1,1)) +
-    scale_color_manual(name='Electoral College victory',
-                       values=c("Democratic"='blue','Republican'='red'))  +
-    geom_vline(xintercept = 0) +
-    geom_hline(yintercept = 270) +
-    theme_minimal() +
-    theme(legend.position = 'top',
-          legend.justification = 'left',
-          panel.grid.minor = element_blank()) +
-    guides('alpha'='none') +
-    scale_x_continuous(breaks=seq(-1,1,0.02))
-  
-  pdf('figures/2020_vote_ec_popvote_curve.pdf',width=8,height=8)
-  print(vote_seat_curve.gg)
-  dev.off();Sys.sleep(2)
-  
-  # probability
-  pop_vote_victory_curve <- sims_w_delta_popvotes %>%
-    group_by(dem_pop_vote_margin = round(dem_pop_vote_margin,3)) %>%
-    summarise(prob_ec_victory = mean(dem_ev>=270),
-              p=n()) %>%
-    arrange(desc(dem_pop_vote_margin)) %>%
-    ungroup() %>% 
-    mutate(p=p/sum(p))
-  
-  # plot
-  ev_popvote_divide.gg <- ggplot(pop_vote_victory_curve, aes(x=dem_pop_vote_margin, y=prob_ec_victory)) +
-    geom_hline(yintercept = 0.5) +
-    geom_point(shape=1) +
-    scale_size(range=c(0.1,5)) +
-    stat_smooth(geom='line',method='gam',formula=y~s(x)) +
-    theme_minimal() +
-    theme(legend.position = 'top',
-          legend.justification = 'left',
-          panel.grid.minor = element_blank()) +
-    scale_x_continuous(breaks=seq(-1,1,0.01))
-  
-  pdf('figures/2020_vote_ev_popvote_divide.pdf',width=8,height=6)
-  print(ev_popvote_divide.gg)
-  dev.off();Sys.sleep(2)
-  
-  # plot
-  ec_histogram.gg2 <- ggplot(sims_w_delta_popvotes,aes(x=dem_ev,
-                                                       fill=ifelse(dem_ev>=270,'Democratic','Republican'))) + 
-    geom_histogram(aes(y = ..count..),
-                   binwidth=2) +
-    scale_x_continuous(breaks=seq(0,560,30)) +
-    scale_y_continuous(breaks=seq(0,nrow(sims_w_delta_popvotes),nrow(sims_w_delta_popvotes) / 100),
-                       labels=function(x){sprintf('%s%%',round(x/nrow(sims_w_delta_popvotes)*100))}) +
-    theme_minimal() +
-    scale_fill_manual(name='Electoral College victory',
-                      values=c("Democratic"='blue','Republican'='red')) +
-    theme(legend.position = 'top',
-          legend.justification = 'left',
-          panel.grid.minor = element_blank()) +
-    labs(x='Democratic Electoral College votes',
-         y='Probability',
-         caption='Simulating 3ppt non-sampling error')
-  
-  pdf('figures/2020_vote_electoral_college_histogram_nonsampling_error.pdf',width=8,height=6)
-  print(ec_histogram.gg2)
-  dev.off();Sys.sleep(2)
-  
-  # pop vote histogram
-  # plot
-  popvote_histogram.gg2 <- ggplot(sims_w_delta_popvotes,aes(x=dem_pop_vote_margin,
-                                                            fill=case_when(dem_ev>=270 & dem_pop_vote_margin>0 ~ 'Dem. EC & Dem. Pop. Vote',
-                                                                           dem_ev>=270 & dem_pop_vote_margin<0 ~ 'Dem. EC & Rep. Pop. Vote',
-                                                                           dem_ev<270 & dem_pop_vote_margin>0 ~ 'Rep. EC & Dem. Pop. Vote',
-                                                                           dem_ev<270 & dem_pop_vote_margin<0 ~ 'Rep. EC & Rep. Vote'))) + 
-    geom_histogram(aes(y = ..count..),
-                   binwidth=0.001) +
-    scale_x_continuous(breaks=seq(-1,1,0.01))+
-    scale_y_continuous(breaks=seq(0,nrow(sims_w_delta_popvotes),nrow(sims_w_delta_popvotes) / 200),
-                       labels=function(x){sprintf('%s%%',round(x/nrow(sims_w_delta_popvotes)*100,2))}) +
-    theme_minimal() +
-    scale_fill_manual(name='Scenario',
-                      values=c('Dem. EC & Dem. Pop. Vote'='#2E86C1',
-                               'Dem. EC & Rep. Pop. Vote'='#85C1E9',
-                               'Rep. EC & Dem. Pop. Vote'='#F1948A',
-                               'Rep. EC & Rep. Vote'='#CB4335')) +
-    theme(legend.position = 'top',
-          legend.justification = 'left',
-          panel.grid.minor = element_blank()) +
-    labs(x='Democratic popular vote margin',
-         y='Probability')
-  
-  
-  #pdf('figures/2020_vote_popular_vote_histogram.pdf',width=8,height=8)
-  print(popvote_histogram.gg2)
-  #dev.off();Sys.sleep(2)
-  
-  # check probabilities again with the 3 pts of error added
-  nrow(sims_w_delta_popvotes[sims_w_delta_popvotes$dem_ev>=270,])/nrow(sims_w_delta_popvotes)
-  nrow(sims_w_delta_popvotes[sims_w_delta_popvotes$dem_pop_vote_margin>=0,])/nrow(sims_w_delta_popvotes)
-}
-
-# ALL DONE! ---------------------------------------------------------------
-message("///// All done! /////")
-
-# send alert if on mac
-if(Sys.info()['sysname'] == "Darwin"){ for(i in 1:3){beepr::beep(2);Sys.sleep(0.5)} }
+  mutate(pct = n / sum(n))
