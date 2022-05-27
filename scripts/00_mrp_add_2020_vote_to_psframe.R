@@ -8,6 +8,7 @@ rm(list=ls())
 library(tidyverse)
 library(brms) # install.packages('brms',version='2.9.0')
 library(cmdstanr)
+library(survey)
 
 # stan stuff
 mc.cores = parallel::detectCores()
@@ -113,10 +114,10 @@ cces20 <- cces20.raw %>%
     
     ### voting variables
     # vote in 2016
-    president_2020 = case_when(is.na(CL_2020gvm ) ~ 'Non_voter',
-                               CC20_364a == 1 ~ 'Trump',
-                               CC20_364a == 2 ~ 'Biden', 
-                               CC20_364a == 3 ~ 'Other',
+    past_vote = case_when(is.na(CL_2020gvm ) ~ 'Non_voter',
+                               CC20_364a == 1 | CC20_364b == 1 ~ 'Trump',
+                               CC20_364a == 2 | CC20_364b == 2~ 'Biden', 
+                               CC20_364a == 3 | CC20_364b == 3~ 'Other',
                                T ~ 'Non_voter'),
     
     # validation variable
@@ -135,7 +136,7 @@ cces20 <- cces20.raw %>%
   dplyr::select(state_name,
                 race, sex, age, edu, marstat,
                 income5,
-                president_2020,
+                past_vote,
                 weight,
   ) 
 
@@ -145,66 +146,18 @@ cces20 <- cces20 %>%
   left_join(state_region_cw)
 
 cces20 %>%
-  #filter(president_2020 != 'Non_voter') %>%
-  group_by(president_2020) %>%
+  #filter(past_vote != 'Non_voter') %>%
+  group_by(past_vote) %>%
   summarise(n = sum(weight)) %>%
   mutate(pct = n/sum(n))
 
 cces20 %>%
-  filter(president_2020 != 'Non_voter') %>%
-  group_by(president_2020) %>%
+  filter(past_vote != 'Non_voter') %>%
+  group_by(race, past_vote) %>%
   summarise(n = sum(weight)) %>%
   mutate(pct = n/sum(n))
 
-
-# impute survey data variables --------------------------------------------
-print(" ---- Imputing missing survey data")
-
-# setup pythong environment by running:
-# reticulate::install_miniconda()
-
-# describe variables
-cces20_cat <- c('state_name','race','sex','age','edu','income5','income.c','president_2020','past_vote','state_abb','marstat','region')
-
-# apply rMIDAS preprocessing steps
-cces20_conv <- convert(cces20, 
-                       cat_cols = cces20_cat)
-
-# train the model for 20 epochs
-cces20_train <- train(cces20_conv,
-                      training_epochs = 50,
-                      layer_structure = c(128,128),
-                      input_drop = 0.75,
-                      seed = 89)
-
-
-# generate 1 imputed datasets
-cces20_complete <- complete(cces20_train, m = 1)[[1]]
-
-prop.table(table(cces20_complete$income5))
-prop.table(table(cces20$income5))
-
-# mutations on the imputed dataset, and save over original
-cces20 <- cces20_complete %>%
-  as_tibble() %>%
-  mutate(
-    income5 = factor(income5, ordered = TRUE, levels=c('Under $30K',"$30-60K",'$60-100K',"$100-150K", '$150K or more')),
-    
-    # income as linear term
-    income.c = as.numeric(income5),
-    
-    age = factor(age, ordered = TRUE, levels=c('18-29',"30-44",'45-64',"65+")),
-    
-    # age as linear term
-    age.c = as.numeric(age),
-  )
-
-
-cces20 %>%
-  filter(president_2020 != 'Non_voter') %>%
-  group_by(president_2020) %>%
-  summarise(n = sum(weight)) %>%
-  mutate(pct = n/sum(n))
+cces20 = na.omit(cces20)
 
 # final survey cleanup ----------------------------------------------------
 # check size of poll
@@ -220,19 +173,19 @@ unique(cces20$past_vote) %in% unique(targets$past_vote)
 #some checks
 cces20.svy <- svydesign(~1,data=cces20,weights=~weight)
 
-svymean(~president_2020,cces20.svy)
-svymean(~president_2020,subset(cces20.svy,president_2020 != 'Non_voter'))
+svymean(~past_vote,cces20.svy)
+svymean(~past_vote,subset(cces20.svy,past_vote != 'Non_voter'))
 
 svymean(~past_vote,subset(cces20.svy,past_vote != 'Non_voter'))
 
 cces20 %>%
-  dplyr::filter(president_2020 != 'Non_voter') %>%
-  group_by(president_2020) %>%
+  dplyr::filter(past_vote != 'Non_voter') %>%
+  group_by(past_vote) %>%
   summarise(n=sum(weight)) %>%
   mutate(prop=n/sum(n))
 
 cces20 %>%
-  group_by(state_name,president_2020) %>%
+  group_by(state_name,past_vote) %>%
   summarise(n=sum(weight)) %>%
   mutate(prop=n/sum(n))
 
@@ -246,7 +199,7 @@ cces20 %>%
   summarise(n=sum(weight)) %>%
   mutate(prop=n/sum(n))
 
-svymean(~president_2020, 
+svymean(~past_vote, 
         subset(cces20.svy,state_name=='Minnesota'),
         na.rm=T) 
 
@@ -370,7 +323,7 @@ state_targets_pastvote <- state_targets_pastvote %>%
          Other = Other *n,
          Non_voter = Non_voter * n) %>%
   dplyr::select(state_name, Biden, Trump, Other, Non_voter) %>%
-  gather(president_2020,Freq,2:5) %>%
+  gather(past_vote,Freq,2:5) %>%
   mutate(Freq = Freq/sum(Freq)) %>%
   ungroup() 
 
@@ -383,14 +336,14 @@ state_targets_pastvote <- state_targets_pastvote %>%
 
 # make sure weighting vars are same levels
 state_targets_pastvote <- state_targets_pastvote %>%
-  mutate(president_2020 = factor(president_2020,levels=c('Biden','Trump','Other','Non_voter')))
+  mutate(past_vote = factor(past_vote,levels=c('Biden','Trump','Other','Non_voter')))
 
 cces20 <- cces20 %>%
-  mutate(president_2020 = ifelse(president_2020 == 'Non_voter','Non_voter',president_2020),
-         president_2020 = factor(president_2020,levels=c('Biden','Trump','Other','Non_voter')))
+  mutate(past_vote = ifelse(past_vote == 'Non_voter','Non_voter',past_vote),
+         past_vote = factor(past_vote,levels=c('Biden','Trump','Other','Non_voter')))
 
 # filter out states without all 4 vote options
-filter_out_these_states <- cces20 %>% group_by(state_name,president_2020) %>% summarise(n=n()) %>% group_by(state_name) %>% summarise(n=n()) %>% dplyr::filter(n<4) %>% pull(state_name)
+filter_out_these_states <- cces20 %>% group_by(state_name,past_vote) %>% summarise(n=n()) %>% group_by(state_name) %>% summarise(n=n()) %>% dplyr::filter(n<4) %>% pull(state_name)
 
 # create survey object stratified by state
 cces20.svy <- svydesign(ids=~1,
@@ -400,8 +353,8 @@ cces20.svy <- svydesign(ids=~1,
 
 # rake weights based on past vote
 cces20.svy.raked <- postStratify(design = cces20.svy,
-                                 strata = ~president_2020+state_name,
-                                 population = state_targets_pastvote %>% dplyr::filter(!state_name %in% filter_out_these_states) %>% group_by(president_2020,state_name) %>% summarise(Freq = sum(Freq)), 
+                                 strata = ~past_vote+state_name,
+                                 population = state_targets_pastvote %>% dplyr::filter(!state_name %in% filter_out_these_states) %>% group_by(past_vote,state_name) %>% summarise(Freq = sum(Freq)), 
                                  partial=T)
 
 # TRIM WEIGHTS? 
@@ -419,11 +372,11 @@ weighted_poll <- cces20.svy.raked$variables %>%
 
 # check data
 weighted_poll %>% 
-  dplyr::filter(president_2020 != 'Non_voter') %>%
-  group_by(state_name,president_2020) %>%
+  dplyr::filter(past_vote != 'Non_voter') %>%
+  group_by(state_name,past_vote) %>%
   summarise(prop=sum(weight)) %>%
   mutate(prop = prop/sum(prop)) %>%
-  spread(president_2020,prop) %>%
+  spread(past_vote,prop) %>%
   mutate(biden_margin.yg = Biden - Trump) %>%
   dplyr::select(state_name,
                 biden_margin.yg) %>%
@@ -441,18 +394,18 @@ weighted_poll %>%
 # and add back the rows from the unpopulated cells
 cces20 <- weighted_poll %>%
   bind_rows(cces20 %>% dplyr::filter(state_name %in% filter_out_these_states)) %>%
-  mutate(president_2020 = ifelse(president_2020 == 'Non_voter','Non_voter',
-                                 as.character(president_2020))) %>%
+  mutate(past_vote = ifelse(past_vote == 'Non_voter','Non_voter',
+                                 as.character(past_vote))) %>%
   as.data.frame()
 
 
 # check again
 cces20 %>% 
-  dplyr::filter(president_2020 != 'Non_voter') %>%
-  group_by(state_name,president_2020) %>%
+  dplyr::filter(past_vote != 'Non_voter') %>%
+  group_by(state_name,past_vote) %>%
   summarise(prop=sum(weight)) %>%
   mutate(prop = prop/sum(prop)) %>%
-  spread(president_2020,prop) %>%
+  spread(past_vote,prop) %>%
   mutate(biden_margin.yg = Biden - Trump) %>%
   dplyr::select(state_name,
                 biden_margin.yg) %>%
@@ -469,17 +422,17 @@ cces20 %>%
 
 # check some tabs and such
 cces20.svy <- svydesign(~1,data=cces20,weights=~weight)
-svymean(~president_2020,cces20.svy)
-svymean(~president_2020,subset(cces20.svy,president_2020 != "Non_voter"))
-svymean(~past_vote,subset(cces20.svy,president_2020 != "Non_voter" & past_vote != "Non_voter"))
-svymean(~president_2020,subset(cces20.svy,president_2020 != "Non_voter" & past_vote == "Non_voter"))
-svymean(~president_2020,subset(cces20.svy,president_2020 != "Non_voter" & state_name=='Louisiana'),na.rm=T)
+svymean(~past_vote,cces20.svy)
+svymean(~past_vote,subset(cces20.svy,past_vote != "Non_voter"))
+svymean(~past_vote,subset(cces20.svy,past_vote != "Non_voter" & past_vote != "Non_voter"))
+svymean(~past_vote,subset(cces20.svy,past_vote != "Non_voter" & past_vote == "Non_voter"))
+svymean(~past_vote,subset(cces20.svy,past_vote != "Non_voter" & state_name=='Louisiana'),na.rm=T)
 
 
 # MODEL LIKELY VOTERS -----------------------------------------------------
 # voter dummy variable
 cces20 <- cces20 %>%
-  mutate(likely_voter_dummy = round(president_2020 != 'Non_voter') ) %>%
+  mutate(likely_voter_dummy = round(past_vote != 'Non_voter') ) %>%
   ungroup()
 
 # run model!
@@ -577,7 +530,7 @@ targets %>%
 message("Running 2020 biden/trump/other vote MRP")
 
 if(REDO_MODELS | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/"))))){
-  pres_2020_model <- brm(formula = president_2020 | weights(weight) ~
+  pres_2020_model <- brm(formula = past_vote | weights(weight) ~
                            # state-level smoothers
                            state_biden_2020 + state_vap_turnout_2016 + state_white_protestant + state_median_income +
                            income.c*state_median_income + income.c*state_biden_2020 +
@@ -594,7 +547,7 @@ if(REDO_MODELS | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/")
                            # past vote!
                            (1 | past_vote:edu) + (1 | past_vote:age) + (1 | past_vote:race) +
                            (1 | past_vote:income5) + (1 | past_vote:race:edu),
-                         data = cces20[cces20$president_2020 != 'Non_voter',], # %>% group_by(time_stamp) %>% sample_n(500) %>% ungroup(),
+                         data = cces20[cces20$past_vote != 'Non_voter',], # %>% group_by(time_stamp) %>% sample_n(500) %>% ungroup(),
                          family = categorical(link='logit',
                                               refcat = 'Other'),
                          # priors
@@ -670,7 +623,7 @@ targets %>%
             other = sum(pres_2020_other * n * likely_voter) / sum(n * likely_voter),
   ) 
 
-svymean(~president_2020,subset(cces20.svy,president_2020!='Non_voter'),na.rm=T)
+svymean(~past_vote,subset(cces20.svy,past_vote!='Non_voter'),na.rm=T)
 
 
 targets %>%
@@ -1384,19 +1337,19 @@ weighted.mean(state_check$pres_2020_dem,state_check$weight)
 weighted.mean(state_check$pres_2020_rep,state_check$weight)
 weighted.mean(state_check$pres_2020_other,state_check$weight)
 
-svymean(~president_2020, cces20.svy)
-svymean(~president_2020, subset(cces20.svy, president_2020!='Non_voter')) #subset(cces20.svy, voter_reg == 1))
-svymean(~president_2020, subset(cces20.svy, president_2020!='Non_voter'&past_vote!='Non_voter')) #subset(cces20.svy, voter_reg == 1))
-svymean(~president_2020, subset(cces20.svy, president_2020!='Non_voter'&past_vote=='Non_voter')) #subset(cces20.svy, voter_reg == 1))
+svymean(~past_vote, cces20.svy)
+svymean(~past_vote, subset(cces20.svy, past_vote!='Non_voter')) #subset(cces20.svy, voter_reg == 1))
+svymean(~past_vote, subset(cces20.svy, past_vote!='Non_voter'&past_vote!='Non_voter')) #subset(cces20.svy, voter_reg == 1))
+svymean(~past_vote, subset(cces20.svy, past_vote!='Non_voter'&past_vote=='Non_voter')) #subset(cces20.svy, voter_reg == 1))
 
 
 # check state observations
-svytable(~president_2020+state_name,
+svytable(~past_vote+state_name,
          subset(cces20.svy, past_vote!='Non_voter')) %>% #subset(cces20.svy, voter_reg == 1)) %>%
   prop.table(margin=2) %>%
   t() %>%
   as_tibble() %>%
-  spread(president_2020,n) %>%
+  spread(past_vote,n) %>%
   set_names(.,c('state_name','dem_disag','Non_voter','other','rep_disag')) %>%
   left_join(state_check) %>%
   mutate(diff = pres_2020_dem - dem_disag,
