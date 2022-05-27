@@ -228,13 +228,13 @@ ces <- ces %>%
 # model formula
 turnout_formula = likely_voter_dummy ~ # | weights(weight) ~
   # state-level smoothers
-  state_biden_2020 + state_vap_turnout_2016 + state_white_evangel + 
+  state_biden_2020 + region_biden_2020 + state_vap_turnout_2016 + state_white_evangel + 
   state_median_income + state_urbanicity +
   # main demographics, global 
   race + edu + race:edu + race:sex + 
   # pooling across demographics
   (1 | sex) + (1 | age) + (1 | race) + (1 | edu) + (1 | income5) +
-  (1 | race:edu) + (1 | sex:edu) + 
+  (1 | race:edu) + (1 | sex:race) + 
   (1 | region) + (1 | state_name) # +
   # demographics that should vary by geography
   # (1 + sex + age + race + income5 + edu | region/state_name)
@@ -244,7 +244,7 @@ message("Running 2020 turnout MRP")
 
 if(REDO_MODELS | isFALSE(any(grepl("turnout_2020_model.rds" , list.files("models/"))))){
   turnout_2020_model <- brm(formula = turnout_formula,
-                            data = ces , #%>% sample_n(3000) %>% ungroup(),
+                            data = ces %>% sample_n(10000) %>% ungroup(),
                             family = bernoulli(link='logit'),
                             # priors
                             prior = c(set_prior("normal(0, 1)", class = "Intercept"),
@@ -309,13 +309,13 @@ message("Running 2020 biden/trump/other vote MRP")
 # model formula
 vote_formula = past_vote ~ # | weights(weight) ~
   # state-level smoothers
-  state_biden_2020 + state_vap_turnout_2016 + state_white_evangel + 
+  state_biden_2020 + region_biden_2020 + state_vap_turnout_2016 + state_white_evangel + 
   state_median_income + state_urbanicity +
   # main demographics, global 
   race + edu + race:edu + race:sex + 
   # pooling across demographics
   (1 | sex) + (1 | age) + (1 | race) + (1 | edu) + (1 | income5) +
-  (1 | race:edu) + (1 | sex:edu) + 
+  (1 | race:edu) + (1 | sex:race) + 
   (1 | region) + (1 | state_name) # +
   # demographics that should vary by geography
   # (1 + sex + age + race + income5 + edu | region/state_name)
@@ -324,7 +324,7 @@ vote_formula = past_vote ~ # | weights(weight) ~
 
 if(REDO_MODELS | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/"))))){
   pres_2020_model <- brm(formula = vote_formula,
-                         data = ces[ces$past_vote != 'Non_voter',] ,# %>% sample_n(5000) %>% ungroup(),
+                         data = ces[ces$past_vote != 'Non_voter',] %>% sample_n(10000) %>% ungroup(),
                          family = categorical(link='logit', refcat = 'Other'),
                          # priors
                          prior = c(set_prior("normal(0, 1)", class = "Intercept",dpar='muBiden'),
