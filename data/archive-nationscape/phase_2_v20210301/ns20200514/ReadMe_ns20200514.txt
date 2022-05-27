@@ -1,0 +1,10 @@
+This is wave 44 of the Nationscape data (ns20200514).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200514.txt
+bannerbook_ns20200514.pdf which includes cross tabs of each variable
+codebook_ns20200514.pdf describing question wording, variable names, and values
+ns20200514.dta the main data file
+
+Notes:

@@ -1,0 +1,19 @@
+This is wave 60 of the Nationscape data (ns20200903).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200903.txt
+bannerbook_ns20200903.pdf which includes cross tabs of each variable
+codebook_ns20200903.pdf describing question wording, variable names, and values
+ns20200903.dta the main data file
+
+Notes:
+Dropped extra_rnc_watch, extra_vote_ever/mail_past, leave for essential activities in covid activities battery
+No longer asking senate primary questions for 2020 primary races
+Dem_prim_vote and rep_prim_vote changed to be retrospective only (no longer prospective/retrospective)
+Vote_intention added “Yes, I already voted” option
+Display logic for extra_vote_mail questions changed to:
+- If respondent has not selected already voted, get extra_vote_mail_2020
+- If respondent selected already voted, get extra_vote_mail_retr
+Added foreign interference battery
+The warren vs. pence matchup was mistakenly asked of the first 55 respondents. Question was dropped from data but other responses for these 55 kept.

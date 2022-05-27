@@ -1,0 +1,24 @@
+This is wave 46 of the Nationscape data (ns20200528).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200528.txt
+bannerbook_ns20200528.pdf which includes cross tabs of each variable
+codebook_ns20200528.pdf describing question wording, variable names, and values
+ns20200528.dta the main data file
+
+Notes:
+CUT:  
+Q187 parents race
+Q188 ideology ratings
+extra_prescriptions
+extra_income_corona Affected your income
+Q257 Rumors
+Q238 (cut these outcomes: restrict travel by plane/delay elections/stay in home)
+
+Replace Q223 with: 
+ "Have you done any of the following in the past week? 
+— Worn a mask when going out in public
+— Socialized with people not living in my household while maintaining social distancing
+— Socialized with people not living in my household without maintaining social distancing
+— Left my house for non-essential goods or services

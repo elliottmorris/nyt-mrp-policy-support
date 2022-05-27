@@ -1,0 +1,11 @@
+This is wave 28 of the Nationscape data (ns20200123).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200123.txt
+bannerbook_ns20200123.pdf which includes cross tabs of each variable
+codebook_ns20200123.pdf describing question wording, variable names, and values
+ns20200123.dta the main data file
+
+Notes:
+- *CHANGED BRANCHING FOR PARTYID. THOSE WHO SELECT “SOMETHING ELSE” IN STEP 1 NOW GET THE LEAN QUESTION, CONSISTENT WITH CCES AND ANES 

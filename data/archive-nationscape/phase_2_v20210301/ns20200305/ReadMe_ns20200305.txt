@@ -1,0 +1,20 @@
+This is wave 34 of the Nationscape data (ns20200305).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200305.txt
+bannerbook_ns20200305.pdf which includes cross tabs of each variable
+codebook_ns20200305.pdf describing question wording, variable names, and values
+ns20200305.dta the main data file
+
+Notes:
+- remove Buttigieg and Klobuchar from survey, except for Buttigieg favorability
+- remove Bloomberg from vote matchups
+- add questions on parental race
+- add ideological placement of candidates
+- add candidate support among groups questions
+- Changed display logic for rep_vote_prim to be shown to people who were planning to vote in Republican Primary OR were not sure 
+- Start showing specific questions to respondents based on whether the caucus or primary have already been held in their states or not
+	- a) branching logic now routes respondents into primary_party or primary_party_past depending on whether the primary has already been held in the state of residence based on state code provided from LUCID for that individual (see primary_party_past) or not (primary_party).
+	- b) if the primary has been held in the state already and the respondent says that they voted in the Democratic Primary/Caucus or were not sure, they get a new question dem_vote_past which asks how they voted.
+	- c) All respondents, regardless of whether they voted in the past or have not yet had a chance to vote and they selected Dem Primary or Were Not Sure get the dem_vote_intent question asking if the primary were being held today, which candidate would they support…this then branches into top3_dems and ranking for each R

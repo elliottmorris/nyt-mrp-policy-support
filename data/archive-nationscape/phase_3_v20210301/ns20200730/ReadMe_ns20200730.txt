@@ -1,0 +1,13 @@
+This is wave 55 of the Nationscape data (ns20200730).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200730.txt
+bannerbook_ns20200730.pdf which includes cross tabs of each variable
+codebook_ns20200730.pdf describing question wording, variable names, and values
+ns20200730.dta the main data file
+
+Notes:
+- Remove extra_timeline module, consider_biden and not_biden, elect_conf_ questions, and extra_corona_cong
+- Added econ distress questions (extra_worry_finances and last 12 months matrix)
+- Added Susan Rice, Karen Bass, and Kamala Harris to favorability grid

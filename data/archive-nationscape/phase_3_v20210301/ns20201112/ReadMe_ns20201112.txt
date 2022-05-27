@@ -1,0 +1,12 @@
+This is wave 70 of the Nationscape data (ns20201112).
+
+In this folder we have 4 files:
+
+ReadMe_ns20201112.txt
+bannerbook_ns20201112.pdf which includes cross tabs of each variable
+codebook_ns20201112.pdf describing question wording, variable names, and values
+ns20201112.dta the main data file
+
+Notes:
+DROPPED elect_exp grid, extra_biden/trump cares
+CHANGE to switchers_text: now two variables, _biden and _trump, indicating who respondent switched their vote to.

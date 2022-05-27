@@ -1,0 +1,12 @@
+This is wave 74 of the Nationscape data (ns20201210).
+
+In this folder we have 4 files:
+
+ReadMe_ns20201210.txt
+bannerbook_ns20201210.pdf which includes cross tabs of each variable
+codebook_ns20201210.pdf describing question wording, variable names, and values
+ns20201210.dta the main data file
+
+Notes:
+ADDED Perceived/desired ideology battery
+DROPPED financial anxiety battery

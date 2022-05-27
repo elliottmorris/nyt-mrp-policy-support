@@ -1,0 +1,13 @@
+This is wave 49 of the Nationscape data (ns20200618).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200618.txt
+bannerbook_ns20200618.pdf which includes cross tabs of each variable
+codebook_ns20200618.pdf describing question wording, variable names, and values
+ns20200618.dta the main data file
+
+Notes:
+- cut extra_return questions
+- cut protest item
+- edit to vote_2020 questions (added lean in, changed 0604 and 0611 to vote_2020_v1)

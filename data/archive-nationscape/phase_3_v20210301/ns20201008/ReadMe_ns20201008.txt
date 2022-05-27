@@ -1,0 +1,12 @@
+This is wave 65 of the Nationscape data (ns20201008).
+
+In this folder we have 4 files:
+
+ReadMe_ns20201008.txt
+bannerbook_ns20201008.pdf which includes cross tabs of each variable
+codebook_ns20201008.pdf describing question wording, variable names, and values
+ns20201008.dta the main data file
+
+Notes:
+Dropped extra_biden/trump_cares_ me/poor/mid_class/wealthy
+Readded Pence/Biden matchup

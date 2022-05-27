@@ -1,0 +1,15 @@
+This is wave 42 of the Nationscape data (ns20200430).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200430.txt
+bannerbook_ns20200430.pdf which includes cross tabs of each variable
+codebook_ns20200430.pdf describing question wording, variable names, and values
+ns20200430.dta the main data file
+
+Notes:
+- Cut question on how many additional illnesses you’d tolerate to reopen the economy
+- extra_return_church wording changed to “Go to church/religious services”
+- Additional cuts are replace_trump, trump_bloomberg, extra_group_fav_cong, extra_local_corona, extra_tolerance_econ, extra_corona_deaths, warren, sanders, klobuchar, Harris, Abrams, federal covid policies
+
+ 

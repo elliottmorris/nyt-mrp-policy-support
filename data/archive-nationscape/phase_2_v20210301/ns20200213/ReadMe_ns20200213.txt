@@ -1,0 +1,13 @@
+This is wave 30 of the Nationscape data (ns20200213).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200213.txt
+bannerbook_ns20200213.pdf which includes cross tabs of each variable
+codebook_ns20200213.pdf describing question wording, variable names, and values
+ns20200213.dta the main data file
+
+Notes:
+- Remove Joe Walsh from republican primary question
+- Add Bloomberg to favorability
+- Add Bloomberg to Trump Matchup

@@ -1,0 +1,13 @@
+This is wave 38 of the Nationscape data (ns20200402).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200402.txt
+bannerbook_ns20200402.pdf which includes cross tabs of each variable
+codebook_ns20200402.pdf describing question wording, variable names, and values
+ns20200402.dta the main data file
+
+Notes:
+- added Not Sure to extra_trump_corona
+- added Asians to group discrimination battery
+- cut everyone but Trump, Sanders, and Biden from candidate ideology battery

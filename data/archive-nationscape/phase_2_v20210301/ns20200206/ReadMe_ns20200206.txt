@@ -1,0 +1,10 @@
+This is wave 29 of the Nationscape data (ns20200206).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200206.txt
+bannerbook_ns20200206.pdf which includes cross tabs of each variable
+codebook_ns20200206.pdf describing question wording, variable names, and values
+ns20200206.dta the main data file
+
+Notes:

@@ -1,0 +1,12 @@
+This is wave 64 of the Nationscape data (ns20201001).
+
+In this folder we have 4 files:
+
+ReadMe_ns20201001.txt
+bannerbook_ns20201001.pdf which includes cross tabs of each variable
+codebook_ns20201001.pdf describing question wording, variable names, and values
+ns20201001.dta the main data file
+
+Notes:
+Dropped perceived/ideal ideology batteries
+Added extra_biden/trump_cares_ me/poor/mid_class/wealthy

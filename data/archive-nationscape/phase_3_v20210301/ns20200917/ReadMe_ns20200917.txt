@@ -1,0 +1,14 @@
+This is wave 62 of the Nationscape data (ns20200917).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200917.txt
+bannerbook_ns20200917.pdf which includes cross tabs of each variable
+codebook_ns20200917.pdf describing question wording, variable names, and values
+ns20200917.dta the main data file
+
+Notes:
+Dropped political violence/government preference batteries, Trump matchups, extra_priorities_crime, state and local coronavirus policy battery, elec_conf_vote
+Added Trump issue approval/disapproval battery (abbreviated)
+Added vote_2020_clinton and vote_2020_clinton_ln
+Change elec_conf_conduct; no longer asked in matrix (just multiple choice), but response categories remain the same.

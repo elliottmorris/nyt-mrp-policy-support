@@ -1,0 +1,192 @@
+--------------------------------------------------------------------------------
+Codebook for NHGIS data file 'nhgis0030_ds250_20205_state'
+--------------------------------------------------------------------------------
+ 
+Contents
+    - Data Summary
+    - Data Dictionary
+    - Citation and Use
+ 
+Additional documentation on NHGIS data sources is available at: 
+    https://www.nhgis.org/documentation/tabular-data 
+ 
+--------------------------------------------------------------------------------
+Data Summary
+--------------------------------------------------------------------------------
+ 
+Year:             2016-2020
+Geographic level: State
+Dataset:          2020 American Community Survey: 5-Year Data [2016-2020, Tracts & Larger Areas]
+   NHGIS code:    2016_2020_ACS5b
+   NHGIS ID:      ds250
+Breakdown(s):     Geographic Subarea:
+                     Total area (00)
+Data type(s):     (E) Estimates
+                  (M) Margins of error
+ 
+Tables:
+ 
+1. Sex by Age by Nativity and Citizenship Status
+   Universe:    Total population
+   Source code: B05003
+   NHGIS code:  AM0N
+ 
+--------------------------------------------------------------------------------
+Data Dictionary
+--------------------------------------------------------------------------------
+ 
+Context Fields 
+        GISJOIN:     GIS Join Match Code
+        YEAR:        Data File Year
+        STUSAB:      State Postal Abbreviation
+        REGIONA:     Region Code
+        DIVISIONA:   Division Code
+        STATE:       State Name
+        STATEA:      State Code
+        COUNTYA:     County Code
+        CTY_SUBA:    County Subdivision Code
+        PLACEA:      Place Code
+        TRACTA:      Census Tract Code
+        C_CITYA:     Consolidated City Code
+        AIANHHA:     American Indian Area/Alaska Native Area/Hawaiian Home Land Code
+        RES_ONLYA:   American Indian Area/Alaska Native Area (Reservation or Statistical Entity Only) Code
+        TRUSTA:      American Indian Area (Off-Reservation Trust Land Only)/Hawaiian Home Land Code
+        AIHHTLI:     American Indian Trust Land/ Hawaiian Home Land Indicator
+        TRBL_SUBA:   Tribal Subdivision Code
+        AITS:        American Indian Tribal Subdivision (FIPS)
+        ANRCA:       Alaska Native Regional Corporation Code
+        CBSAA:       Core Based (Metropolitan/Micropolitan) Statistical Area [2003-Present] Code
+        CSAA:        Combined Statistical Area [2003-Present] Code
+        METDIVA:     Metropolitan Division [2003-Present] Code
+        MEMI:        Metropolitan/Micropolitan Indicator Flag
+        NECTAA:      New England City and Town Area [2003-Present] Code
+        C_NECTAA:    Combined New England City and Town Area [2003-Present] Code
+        NECTADIVA:   New England City and Town Area Division [2003-Present] Code
+        URB_AREAA:   Urban Area [1970-Present] Code
+        CDA:         Congressional District Code
+        STLEG_UPA:   State Legislative District (Upper Chamber) Code
+        STLEG_LOA:   State Legislative District (Lower Chamber) Code
+        ZCTAA:       5-Digit ZIP Code Tabulation Area [2000-Present] Code
+        SUBMCDA:     Subminor Civil Division [Puerto Rico] Code
+        SD_ELMA:     School District (Elementary) Code
+        SD_SECA:     School District (Secondary) Code
+        SD_UNIA:     School District (Unified) Code
+        UR:          Urban/Rural
+        PCI:         Principal City Indicator
+        PUMAA:       Public Use Microdata Sample Area (PUMA) Code
+        GEOID:       Census Geographic Identifier
+        TRBL_CTA:    Tribal Census Tract Code
+ 
+Data Type (E):
+    Estimates
+ 
+        NAME_E:      Area Name
+ 
+    Table 1:     Sex by Age by Nativity and Citizenship Status
+    Universe:    Total population
+    Source code: B05003
+    NHGIS code:  AM0N
+        AM0NE001:    Total
+        AM0NE002:    Male
+        AM0NE003:    Male: Under 18 years
+        AM0NE004:    Male: Under 18 years: Native
+        AM0NE005:    Male: Under 18 years: Foreign born
+        AM0NE006:    Male: Under 18 years: Foreign born: Naturalized U.S. citizen
+        AM0NE007:    Male: Under 18 years: Foreign born: Not a U.S. citizen
+        AM0NE008:    Male: 18 years and over
+        AM0NE009:    Male: 18 years and over: Native
+        AM0NE010:    Male: 18 years and over: Foreign born
+        AM0NE011:    Male: 18 years and over: Foreign born: Naturalized U.S. citizen
+        AM0NE012:    Male: 18 years and over: Foreign born: Not a U.S. citizen
+        AM0NE013:    Female
+        AM0NE014:    Female: Under 18 years
+        AM0NE015:    Female: Under 18 years: Native
+        AM0NE016:    Female: Under 18 years: Foreign born
+        AM0NE017:    Female: Under 18 years: Foreign born: Naturalized U.S. citizen
+        AM0NE018:    Female: Under 18 years: Foreign born: Not a U.S. citizen
+        AM0NE019:    Female: 18 years and over
+        AM0NE020:    Female: 18 years and over: Native
+        AM0NE021:    Female: 18 years and over: Foreign born
+        AM0NE022:    Female: 18 years and over: Foreign born: Naturalized U.S. citizen
+        AM0NE023:    Female: 18 years and over: Foreign born: Not a U.S. citizen
+ 
+Data Type (M):
+    Margins of error
+ 
+        NAME_M:      Area Name
+ 
+    Table 1:     Sex by Age by Nativity and Citizenship Status
+    Universe:    Total population
+    Source code: B05003
+    NHGIS code:  AM0N
+        AM0NM001:    Total
+        AM0NM002:    Male
+        AM0NM003:    Male: Under 18 years
+        AM0NM004:    Male: Under 18 years: Native
+        AM0NM005:    Male: Under 18 years: Foreign born
+        AM0NM006:    Male: Under 18 years: Foreign born: Naturalized U.S. citizen
+        AM0NM007:    Male: Under 18 years: Foreign born: Not a U.S. citizen
+        AM0NM008:    Male: 18 years and over
+        AM0NM009:    Male: 18 years and over: Native
+        AM0NM010:    Male: 18 years and over: Foreign born
+        AM0NM011:    Male: 18 years and over: Foreign born: Naturalized U.S. citizen
+        AM0NM012:    Male: 18 years and over: Foreign born: Not a U.S. citizen
+        AM0NM013:    Female
+        AM0NM014:    Female: Under 18 years
+        AM0NM015:    Female: Under 18 years: Native
+        AM0NM016:    Female: Under 18 years: Foreign born
+        AM0NM017:    Female: Under 18 years: Foreign born: Naturalized U.S. citizen
+        AM0NM018:    Female: Under 18 years: Foreign born: Not a U.S. citizen
+        AM0NM019:    Female: 18 years and over
+        AM0NM020:    Female: 18 years and over: Native
+        AM0NM021:    Female: 18 years and over: Foreign born
+        AM0NM022:    Female: 18 years and over: Foreign born: Naturalized U.S. citizen
+        AM0NM023:    Female: 18 years and over: Foreign born: Not a U.S. citizen
+ 
+--------------------------------------------------------------------------------
+Citation and Use of NHGIS Data
+--------------------------------------------------------------------------------
+ 
+All persons are granted a limited license to use this documentation and the
+accompanying data, subject to the following conditions:
+
+* REDISTRIBUTION: You will not redistribute the data without permission.
+
+  You may publish a subset of the data to meet journal requirements for accessing 
+  data related to a particular publication. Contact us for permission for any other 
+  redistribution; we will consider requests for free and commercial redistribution.
+
+* CITATION: You will cite NHGIS appropriately.
+
+    * Publications and research reports employing NHGIS data (either tabular or GIS) 
+      should include the following citation:
+
+        Steven Manson, Jonathan Schroeder, David Van Riper, Tracy Kugler, and Steven Ruggles. 
+        IPUMS National Historical Geographic Information System: Version 16.0 
+        [dataset]. Minneapolis, MN: IPUMS. 2021. 
+        http://doi.org/10.18128/D050.V16.0
+
+    * For policy briefs, online resources, or articles in the popular press, we 
+      recommend that you cite the use of NHGIS data as follows:
+
+        IPUMS NHGIS, University of Minnesota, www.nhgis.org.
+
+These terms of use are a legally binding agreement. You can use the data only in 
+accordance with these terms, and any other use is a violation of the agreement. 
+Violations may result in revocation of the agreement and prohibition from using other 
+IPUMS data. If IPUMS or our partners are harmed from your violation, you are 
+responsible for all damages, including reasonable attorney's fees and expenses.
+        
+In addition, we request that users send us a copy of any publications, research
+reports, or educational material making use of the data or documentation.
+
+Send electronic material to: nhgis@umn.edu
+
+Printed matter should be sent to:
+
+    IPUMS NHGIS
+    Institute for Social Research and Data Innovation
+    University of Minnesota
+    50 Willey Hall
+    225 19th Ave S
+    Minneapolis, MN 55455

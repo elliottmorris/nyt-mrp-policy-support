@@ -1,0 +1,21 @@
+This is wave 47 of the Nationscape data (ns20200604).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200604.txt
+bannerbook_ns20200604.pdf which includes cross tabs of each variable
+codebook_ns20200604.pdf describing question wording, variable names, and values
+ns20200604.dta the main data file
+
+Notes:
+Updates to 2020 pros election items
+
+- CUT dem_vote_intent
+- CUT rep_vote_prim
+- CUT dem_vote_past
+- CUT rep_vote_past
+- ADD dem_prim_vote
+- ADD rep_prim_vote
+- ADD vote_2020
+- CUT vote_intention
+- Add questions on violence

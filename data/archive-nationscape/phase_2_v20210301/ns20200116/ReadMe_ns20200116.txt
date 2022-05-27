@@ -1,0 +1,11 @@
+This is wave 27 of the Nationscape data (ns20200116).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200116.txt
+bannerbook_ns20200116.pdf which includes cross tabs of each variable
+codebook_ns20200116.pdf describing question wording, variable names, and values
+ns20200116.dta the main data file
+
+Notes:
+- Removed Booker from dem_primary and dem_rank questions

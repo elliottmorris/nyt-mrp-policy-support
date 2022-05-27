@@ -1,0 +1,11 @@
+This is wave 43 of the Nationscape data (ns20200507).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200507.txt
+bannerbook_ns20200507.pdf which includes cross tabs of each variable
+codebook_ns20200507.pdf describing question wording, variable names, and values
+ns20200507.dta the main data file
+
+Notes:
+- Changed wording of extra_return questions to “Some [old: Many] people live in states where many of the following things are restricted due to the spread of coronavirus. If restrictions were lifted on the advice of public health officials to do the following, how likely would you be to:”

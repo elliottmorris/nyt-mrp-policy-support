@@ -1,0 +1,11 @@
+This is wave 26 of the Nationscape data (ns20200109).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200109.txt
+bannerbook_ns20200109.pdf which includes cross tabs of each variable
+codebook_ns20200109.pdf describing question wording, variable names, and values
+ns20200109.dta the main data file
+
+Notes:
+- Remove Trump Impeachment question from rotation and conjoint

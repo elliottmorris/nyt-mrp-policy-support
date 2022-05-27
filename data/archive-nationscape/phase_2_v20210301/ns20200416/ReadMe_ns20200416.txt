@@ -1,0 +1,12 @@
+This is wave 40 of the Nationscape data (ns20200416).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200416.txt
+bannerbook_ns20200416.pdf which includes cross tabs of each variable
+codebook_ns20200416.pdf describing question wording, variable names, and values
+ns20200416.dta the main data file
+
+Notes:
+- added new questions re: coronavirus
+- switched pence matchup from Warren to Bloomberg to be consistent with Trump matchups

@@ -1,0 +1,11 @@
+This is wave 53 of the Nationscape data (ns20200716).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200716.txt
+bannerbook_ns20200716.pdf which includes cross tabs of each variable
+codebook_ns20200716.pdf describing question wording, variable names, and values
+ns20200716.dta the main data file
+
+Notes:
+- added consider_biden and not_biden

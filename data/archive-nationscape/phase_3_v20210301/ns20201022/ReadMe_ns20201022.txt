@@ -1,0 +1,12 @@
+This is wave 67 of the Nationscape data (ns20201022).
+
+In this folder we have 4 files:
+
+ReadMe_ns20201022.txt
+bannerbook_ns20201022.pdf which includes cross tabs of each variable
+codebook_ns20201022.pdf describing question wording, variable names, and values
+ns20201022.dta the main data file
+
+Notes:
+Added mask question to state and local covid policy matrix
+Added questions on personal/perceived presidential support for mask mandate/closing businesses

@@ -1,0 +1,15 @@
+This is wave 69 of the Nationscape data (ns20201105).
+
+In this folder we have 4 files:
+
+ReadMe_ns20201105.txt
+bannerbook_ns20201105.pdf which includes cross tabs of each variable
+codebook_ns20201105.pdf describing question wording, variable names, and values
+ns20201105.dta the main data file
+
+Notes:
+Because this is the first post-election wave, there are many changes to this week:
+CUT: consider_trump, not_trump, vote_2020, vote_2020_lean/clinton/clinton_ln, pence matchup, extra_vote_mail_2020, elect_loser_concede, covid_support_ and covid_pres_ questions
+RETRO designation and language changes for: vote_intention (vote_intention_retro), primary_party (primary_party_retro), house_intent (house_intent_retro), senate_intent (senate_intent_retro), governor_intent (governor_intent_retr), elect_conf_conduct and _vote (_retro added), extra_vote_mail_retr (slight wording change)
+ADDED: who_won, Trump/Biden supporter favorability, ga_runoff_intent, ga_special_ntent, Latinos perceived discrimination, married, extra_n_children, elect_exp grid, covid state and local policy grid, switchers_text
+ADDED “I did not vote in this race in 2020” options to house, senate, and governor _intent questions. Option “Received my ballot through the mail and returned it to an official ballot drop box” to extra_vote_mail_retr

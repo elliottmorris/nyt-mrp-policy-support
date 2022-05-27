@@ -1,0 +1,13 @@
+This is wave 48 of the Nationscape data (ns20200611).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200611.txt
+bannerbook_ns20200611.pdf which includes cross tabs of each variable
+codebook_ns20200611.pdf describing question wording, variable names, and values
+ns20200611.dta the main data file
+
+Notes:
+- cut local official covid approval question
+- add back in parental race question
+- add protest question

@@ -1,0 +1,20 @@
+This is wave 36 of the Nationscape data (ns20200319).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200319.txt
+bannerbook_ns20200319.pdf which includes cross tabs of each variable
+codebook_ns20200319.pdf describing question wording, variable names, and values
+ns20200319.dta the main data file
+
+Notes:
+- Add Bloomberg back into Trump Matchup
+- Remove Bloomberg and Buttigieg favorability ratings
+- Add Stacey Abrams, Kamala Harris, and Amy Klobuchar to favorability
+- Add Coronavirus questions
+
+Due to a technical error, no one in wave 36 was asked:
+- Primary Senate questions (present in previous waves)
+- Senate vote intent question
+- Gubernatorial vote intent question
+- Retrospective primary vote

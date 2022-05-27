@@ -1,0 +1,12 @@
+This is wave 59 of the Nationscape data (ns20200827).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200827.txt
+bannerbook_ ns20200827.pdf which includes cross tabs of each variable
+codebook_ ns20200827.pdf describing question wording, variable names, and values
+ns20200827.dta the main data file
+
+Notes:
+Dropped extra_dnc_watch, extra_usps_impact, questions on returning to or reopening schools, extra_n_children, extra_age_children
+Added extra_biden_cares_ and extra_trump_cares_ matrices, extra_vote_ever, extra_vote_mail_past, extra_vote_mail_2020, elec_conf_ questions

@@ -1,0 +1,18 @@
+This is wave 37 of the Nationscape data (ns20200326).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200326.txt
+bannerbook_ns20200326.pdf which includes cross tabs of each variable
+codebook_ns20200326.pdf describing question wording, variable names, and values
+ns20200326.dta the main data file
+
+Notes:
+- cut extra_pop_latino : extra_pop_men grid
+- New extra_ questions on finances
+- Got rid of primary_party_past variable and made following changes
+- Changed text of question stem for primary_party to say “Will you OR DID YOU vote in the Democratic or Republican primary in your state in 2020?
+- Added a rep_vote_past question
+- If respondent says that they will/did vote in the Democratic Primary/Caucus in their state or are “not sure”, they also answer dem_vote_past 
+- If respondent says that they did vote in the Republican Primary/Caucus in their state or are not sure, they also answer rep_vote_past
+- We expanded the response options to the vote_past questions for both parties.

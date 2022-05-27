@@ -1,0 +1,12 @@
+This is wave 71 of the Nationscape data (ns20201119).
+
+In this folder we have 4 files:
+
+ReadMe_ns20201119.txt
+bannerbook_ns20201119.pdf which includes cross tabs of each variable
+codebook_ns20201119.pdf describing question wording, variable names, and values
+ns20201119.dta the main data file
+
+Notes:
+ADDED work_location
+DROPPED extra_vacc_reason_ items

@@ -1,0 +1,12 @@
+This is wave 54 of the Nationscape data (ns20200723).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200723.txt
+bannerbook_ns20200723.pdf which includes cross tabs of each variable
+codebook_ns20200723.pdf describing question wording, variable names, and values
+ns20200723.dta the main data file
+
+Notes:
+- Added extra_corona_cong, covid timeline module
+- Removed covid return module

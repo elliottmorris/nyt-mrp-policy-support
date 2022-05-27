@@ -1,0 +1,11 @@
+This is wave 52 of the Nationscape data (ns20200709).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200709.txt
+bannerbook_ns20200709.pdf which includes cross tabs of each variable
+codebook_ns20200709.pdf describing question wording, variable names, and values
+ns20200709.dta the main data file
+
+Notes:
+- Added elect_conf_vote, elect_conf_conduct

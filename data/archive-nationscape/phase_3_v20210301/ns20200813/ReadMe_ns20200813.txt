@@ -1,0 +1,14 @@
+This is wave 57 of the Nationscape data (ns20200813).
+
+In this folder we have 4 files:
+
+ReadMe_ns20200813.txt
+bannerbook_ns20200813.pdf which includes cross tabs of each variable
+codebook_ns20200813.pdf describing question wording, variable names, and values
+ns20200813.dta the main data file
+
+Notes:
+- Dropped Rice and Bass from favorability grid, added Pence
+- Added party ideology perception/preference
+- Added Trump, Biden, Harris, and Pence to ideology perception, added “/individuals” to stem. Variable for candidates is extra_ideo_rate_lastname (before was extra_ideo_lastname with different stem)
+- Added DNC watch question (extra_dnc_watch)
