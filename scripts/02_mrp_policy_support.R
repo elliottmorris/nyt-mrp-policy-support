@@ -282,8 +282,12 @@ minimum_wage_15d.state = generate_state_policy_estimates('minimum_wage_15d')
 
 beepr::beep(2)
 
+# inverse abortion never legal (to code in liberal direction)
+abortion_never_legal.state = abortion_never_legal.state %>% mutate(est = 1 - est)
+
 # join together
-state_ests = list(path_to_citizenship_dreamers.state,
+state_ests = list(
+  path_to_citizenship_dreamers.state,
   legal_marijuana.state,
   cap_carbon.state,
   guns_bg.state,
@@ -294,7 +298,8 @@ state_ests = list(path_to_citizenship_dreamers.state,
   abortion_most_time.state,
   paid_maternity_12wk.state,
   gov_health_subsidies.state,
-  minimum_wage_15d.state) %>% 
+  minimum_wage_15d.state
+  ) %>% 
   bind_rows %>%
   spread(policy, est)
 
