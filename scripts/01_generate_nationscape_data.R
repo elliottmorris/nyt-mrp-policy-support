@@ -10,8 +10,7 @@ library(survey)
 #           list.files(list.files('Nationscape-Weekly-Materials-DTA-2021Dec/phase_2_v20210301//',
 #                                 full.names=T),full.names = T))
 
-files = list.files(list.files('Nationscape-Weekly-Materials-DTA-2021Dec/phase_3_v20210301/',
-                                full.names=T),full.names = T)
+files = list.files(list.files('data/archive-nationscape/phase_3_v20210301/',full.names=T),full.names = T)
 
 files
 
@@ -44,24 +43,88 @@ dat = dat %>%
 
 
 # recode survey questions we're interested in -----------------------------
-# presidential vote: vote_2020 or vote_2020_retro
+# need to this converting state abbs to names
+state_region_cw <- read_csv("data/state/state_region_crosswalk.csv")
+
+
+# presidential vote: past_vote or past_vote_retro
 # cap on carbon? cap_carbon
 ns = dat %>% 
   mutate(
     # demos
-    pid_lean = case_when(grepl('Democrat',pid7) ~ 'Democrat',
-                         grepl('Republican',pid7) ~ 'Republican',
-                         pid7 == 'Independent' ~ 'Independent'),
+    ### mutate demographic variables to match the census
+    # race
+    race = case_when(hispanic != "Not Hispanic" ~ "Hispanic",
+                     race_ethnicity == "White" ~ "White, Non-Hispanic",
+                     race_ethnicity == "Black, or African American" ~ "Black, Non-Hispanic",
+                     T ~ "Other, Non-Hispanic"),
+    # sex
+    sex = case_when(gender == "Male" ~ "Male",
+                    gender == "Female" ~ "Female",
+                    TRUE ~ NA_character_),
+    # age
+    AGE = age,
+    age = case_when(AGE >= 18 & AGE <= 29 ~ "18-29",
+                    AGE >= 30 & AGE <= 44 ~ "30-44",
+                    AGE >= 45 & AGE <=  64 ~ "45-64",
+                    AGE >= 65 ~ "65+",
+                    TRUE ~ NA_character_),
+    
+    # education
+    edu = case_when(education %in% c("Middle School - Grades 4 - 8",
+                                     "Completed some high school",
+                                     "3rd Grade or less") ~ "No HS",
+                    education %in% c("High school graduate",
+                                     "Other post high school vocational training") ~ "HS grad",
+                    education %in% c("Completed some college, but no degree",
+                                     "Associate Degree") ~ "Some college",
+                    education %in% c("Completed some graduate, but no degree",
+                                     "College Degree (such as B.A., B.S.)") ~ 'College',
+                    education %in% c("Masters degree",
+                                     "Doctorate degree") ~ "Post-grad",
+                    TRUE ~ NA_character_),
+    
+    # income5
+    income5 = case_when(household_income %in% c("$25,000 to $29,999",
+                                          "Less than $14,999",
+                                          "$15,000 to $19,999",
+                                          "$35,000 to $39,999",
+                                          "$20,000 to $24,999") ~ 'Under $30K',
+                        household_income %in% c("$55,000 to $59,999",
+                                          "$50,000 to $54,999",
+                                          "$40,000 to $44,999",
+                                          "$30,000 to $34,999",
+                                          "$45,000 to $49,999") ~ "$30-60K",
+                        household_income %in% c("$65,000 to $69,999",
+                                          "$85,000 to $89,999",
+                                          "$70,000 to $74,999",
+                                          "$75,000 to $79,999",
+                                          "$60,000 to $64,999",
+                                          "$90,000 to $94,999",
+                                          "$95,000 to $99,999",
+                                          "$80,000 to $84,999") ~ '$60-100K',
+                        household_income %in% c("$100,000 to $124,999",
+                                          "$125,000 to $149,999") ~ "$100-150K",
+                        household_income %in% c("$150,000 to $174,999",
+                                          "$175,000 to $199,999",
+                                          "$250,000 and above",
+                                          "$200,000 to $249,999") ~ '$150K or more',
+                        TRUE ~ NA_character_
+                        
+    ),
+    
+    
+    state_name = state_region_cw$state_name[match(state, state_region_cw$state_abb)],
     
     # vote before election and after
-    vote_2020 = case_when(is.na(vote_2020) ~ as.character(vote_2020_retro), 
+    past_vote = case_when(is.na(vote_2020) ~ as.character(vote_2020_retro), 
                           T ~ as.character(vote_2020)),
     
-    vote_2020 = case_when(vote_2020 == 'Donald Trump' ~ 'Trump',
-                          vote_2020 == 'Joe Biden' ~ 'Biden',
-                          vote_2020 %in% c('Someone else','Someone else:') ~ 'Other',
-                          vote_2020 %in% c("I would not vote","I am not sure/don't know",
-                                          "I abstained","I don't recall") ~ "Non-voter"),
+    past_vote = case_when(past_vote == 'Donald Trump' ~ 'Trump',
+                          past_vote == 'Joe Biden' ~ 'Biden',
+                          past_vote %in% c('Someone else','Someone else:') ~ 'Other',
+                          past_vote %in% c("I would not vote","I am not sure/don't know",
+                                          "I abstained","I don't recall") ~ "Non_voter"),
     
     # policies
     path_to_citizenship_dreamers = dreamers,
@@ -77,11 +140,11 @@ ns = dat %>%
     gov_health_subsidies = health_subsidies,
     minimum_wage_15d = minwage
   ) %>%
-  select(weight, 
+  select(weight, state_name,
          # demos
-         state_abb = state, pid_lean, 
+         sex, race, age, edu, income5,
          # vote
-         vote_2020,
+         past_vote,
          # group favs
          #group_favorability_blm, group_favorability_blacks, group_favorability_whites,
          #group_favorability_muslims, group_favorability_undocumented, group_favorability_lgbt,
@@ -93,137 +156,8 @@ ns = dat %>%
          state_college, abortion_never_legal,
          abortion_most_time, paid_maternity_12wk,
          gov_health_subsidies, minimum_wage_15d) %>%
-  filter(!is.na(vote_2020),
-         !is.na(pid_lean),
-         state_abb != '')
-
-
-# re-weight data to match results of 2020 election -------------------------
-# state and region cw
-state_cw = tibble(state_abb = c(state.abb,'DC'),
-                  state_name = c(state.name,'District of Columbia'))
-
-
-# weight polls to be representative at state-level
-# get pop numbers
-state_results_2020 <- read_csv('state/results_2020.csv') %>%
-  mutate(Biden = biden/total_votes,
-         Trump = trump/total_votes,
-         turnout_pct = total_votes / vep_pop) %>%
-  dplyr::select(state_abb, Biden, Trump, turnout_pct, n = vep_pop) 
-
-weighted.mean(state_results_2020$turnout_pct,state_results_2020$n)
-
-# create "Other" and non-voter number, too
-state_targets_pastvote <- state_results_2020 %>%
-  mutate(Other = 1 - (Biden + Trump),
-         Non_voter = 1 - turnout_pct,
-         Biden = Biden * turnout_pct,
-         Trump = Trump * turnout_pct,
-         Other = Other * turnout_pct) %>%
-  mutate(Biden = Biden * n,
-         Trump = Trump * n,
-         Other = Other *n,
-         Non_voter = Non_voter * n) %>%
-  dplyr::select(state_abb, Biden, Trump, Other, Non_voter) %>%
-  gather(vote_2020,Freq,2:5) %>%
-  mutate(Freq = Freq/sum(Freq)) %>%
-  ungroup() 
-
-weighted.mean(state_targets_pastvote$vote_2020 == 'Non_voter',state_targets_pastvote$Freq)
-
-# can't have a weight of 0, so make v small
-state_targets_pastvote <- state_targets_pastvote %>%
-  mutate(Freq = ifelse(Freq==0,0.00000001,Freq))
-
-state_targets_pastvote <- state_targets_pastvote %>%
-  mutate(Freq = Freq*nrow(ns))  
-
-# make sure weighting vars are same levels
-state_targets_pastvote <- state_targets_pastvote %>%
-  mutate(vote_2020 = factor(as.character(vote_2020),levels=c('Biden','Trump','Other','Non_voter')))
-
-ns <- ns %>%
-  mutate(vote_2020 = ifelse(vote_2020 == 'Non-voter','Non_voter',as.character(vote_2020)),
-         vote_2020 = factor(as.character(vote_2020),levels=c('Biden','Trump','Other','Non_voter')))
-
-
-# create survey object stratified by state
-ns.svy <- svydesign(ids = ~1,
-                    strata = ~state_abb,
-                    data = ns,
-                    weights = ~weight) # start with current weights
-
-# rake weights based on past vote
-ns.svy.raked <- postStratify(design = ns.svy,
-                                 strata = ~vote_2020+state_abb,
-                                 population = state_targets_pastvote %>% group_by(vote_2020,state_abb) %>% summarise(Freq = sum(Freq)), 
-                                 partial = T)
-
-# TRIM WEIGHTS? 
-ns.svy.raked <- trimWeights(design=ns.svy.raked,lower=0.001,upper=12,strict=T)
-
-# extract weights
-new_weights <- attr(ns.svy.raked$postStrata[[1]],'weights')
-new_weights <- weights(ns.svy.raked)
-
-# make new DF with old weights and new data, only for states with full strata
-weighted_poll <- ns.svy.raked$variables %>%
-  mutate(weight = new_weights)
-
-# check biden pct
-weighted_poll %>% 
-  dplyr::filter(vote_2020 != 'Non_voter') %>%
-  group_by(state_abb,vote_2020) %>%
-  summarise(prop=sum(weight)) %>%
-  mutate(prop = prop/sum(prop)) %>%
-  spread(vote_2020,prop) %>%
-  mutate(biden_margin.yg = Biden - Trump) %>%
-  dplyr::select(state_abb,
-                biden_margin.yg) %>%
-  # add actual results
-  left_join(state_results_2020 %>% mutate(biden_margin.actual = Biden - Trump)) %>%
-  # chart
-  ggplot(.,aes(x=biden_margin.yg, y=biden_margin.actual, label=state_abb)) +
-  geom_abline() +
-  geom_text() +
-  stat_smooth(method='lm') +
-  coord_cartesian(xlim=c(-0.5,0.5),ylim=c(-0.5,0.5)) +
-  geom_hline(yintercept = 0) +
-  geom_vline(xintercept = 0)
-
-# check non-voter pct
-weighted_poll %>% 
-  group_by(state_abb,vote_2020) %>%
-  summarise(prop=sum(weight)) %>%
-  mutate(prop = prop/sum(prop)) %>%
-  spread(vote_2020,prop) %>%
-  # add actual results
-  left_join(state_results_2020 %>% select(state_abb, turnout_pct)) %>%
-  # chart
-  ggplot(.,aes(x=Non_voter, y=1-turnout_pct, label=state_abb)) +
-  geom_abline() +
-  geom_text() +
-  stat_smooth(method='lm') 
-
-# save newly weighted poll over the ns object
-# and add back the rows from the unpopulated cells
-ns <- weighted_poll %>%
-  bind_rows(ns) %>%
-  mutate(vote_2020 = ifelse(vote_2020 == 'Non-voter','Non_voter',
-                               as.character(vote_2020))) %>%
-  as.data.frame()
-
+  filter(!is.na(past_vote),
+         state_name != '')
 
 # write -------------------------------------------------------------------
 write_rds(ns,'nationscape.rds',compress='gz')
-
-# also generate census data -----------------------------------------------
-# # codes to add up: AM0NE015
-acs = read_csv('state/nhgis0030_ds250_20205_state.csv') %>%
-  select(state_name = STATE,
-         state_abb = STUSAB,
-         n = AM0NE001)
-
-write_csv(acs, 'state/state_populations.csv')
-

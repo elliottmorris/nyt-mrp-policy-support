@@ -5,11 +5,17 @@
 #' 
 
 rm(list=ls())
+# data
 library(tidyverse)
+# survey calibration
 library(survey)
+library(ccesMRPrun) # remotes::install_github("kuriwaki/ccesMRPrun") 
+# bayes
 library(brms) # install.packages('brms',version='2.9.0')
 library(cmdstanr) # install.packages("cmdstanr", repos = c("https://mc-stan.org/r-packages/", getOption("repos"))); cmdstanr::install_cmdstan()
 library(tidybayes)
+
+
 
 # helper functions
 source("scripts/helpers.R")
@@ -380,16 +386,20 @@ targets %>%
 
 svymean(~past_vote,subset(ces.svy,past_vote!='Non_voter'),na.rm=T)
 
+
+
 targets %>%
-  mutate(n * likely_voter) %>%
-  group_by(state_name) %>%
+  filter(race == 'Hispanic') %>%
+  mutate(n = n * likely_voter) %>%
   summarise(dem = sum(pres_2020_dem * n) / sum(n),
             rep = sum(pres_2020_rep * n) / sum(n),
             other = sum(pres_2020_other * n) / sum(n),
   ) 
 
+svymean(~past_vote,subset(ces.svy,past_vote!='Non_voter' & race=='Hispanic'),na.rm=T)
 
-# CORRECT 2020 TURNOUT AND VOTE PROBS -------------------------------------
+
+# CORRECT TURNOUT WITH 1D CALIBRATION -------------------------------------
 # some renaming
 targets <- targets %>% rename(voter_pred = likely_voter)
 
@@ -406,7 +416,6 @@ targets$voter_pred <-
   )
 
 sum(targets$voter_pred * targets$n) / sum(targets$n)
-
 
 # clone the df
 expanded_targets <- targets
@@ -426,50 +435,97 @@ expanded_targets <- expanded_targets %>%
                                vote_type == "voter_pred" ~ "Voter"))
 
 
-# then,  do the same for vote
-# adjust probs!
+
+# CORRECT VOTE WITH 2-WAY CALIBRATION -------------------------------------
+# get a new targets df just for these folks
 targets_voters <- expanded_targets[expanded_targets$vote_type == 'Voter',] %>%
   select(-vote_type)
 
+# corrections based on state, race
+# using catalist data for demos: https://www.dropbox.com/s/ka9n5gzxwotfu1a/wh2020_public_release_crosstabs.xlsx?dl=0
+# from ccesMRPrun::calib_twoway
 
-# biden
-targets_voters$pres_2020_dem <- 
-  correct_probs(pstrat = targets_voters,
-                weighting = 'n',
-                cell_prob = 'pres_2020_dem',
-                outcome = votes,
-                state_factor = 'biden_pct'
-  )
+# correct biden vote by race, state
+targets_voters$est = targets_voters$pres_2020_dem
+
+# targets
+state_target <- deframe(select(votes, state_name, biden_pct))
+race_target <- c('Black, Non-Hispanic' = 0.90, 
+                 'Hispanic' = 0.63, 
+                 'Other, Non-Hispanic' = 0.60,
+                 'White, Non-Hispanic' = 0.44)
+
+# Ns
+state_N <- deframe(count(targets_voters, state_name, wt = n))
+race_N <- deframe(count(targets_voters, race, wt = n))
+totalN <- deframe(count(targets_voters, wt = n))
+
+# should not take too long
+output = calib_twoway(
+  data = targets_voters,
+  var_area = 'state_name',
+  var_group = 'race',
+  tgt_area = state_target,
+  tgt_group = race_target,
+  n_area = state_N,
+  n_group = race_N,
+  n_total = totalN,
+  use_grad = T
+)
 
 # trump
-targets_voters$pres_2020_rep <- 
-  correct_probs(pstrat = targets_voters,
-                weighting = 'n',
-                cell_prob = 'pres_2020_rep',
-                outcome = votes,
-                state_factor = 'trump_pct'
-  )
+output$est = output$pres_2020_rep
+
+# targets
+state_target <- deframe(select(votes, state_name, biden_pct))
+race_target <- c('Black, Non-Hispanic' = 0.10, 
+                 'Hispanic' = 0.37, 
+                 'Other, Non-Hispanic' = 0.40,
+                 'White, Non-Hispanic' = 0.56)
+
+# Ns
+state_N <- deframe(count(output, state_name, wt = n))
+race_N <- deframe(count(output, race, wt = n))
+totalN <- deframe(count(output, wt = n))
+
+# should not take too long
+output = calib_twoway(
+  data = targets_voters,
+  var_area = 'state_name',
+  var_group = 'race',
+  tgt_area = state_target,
+  tgt_group = race_target,
+  n_area = state_N,
+  n_group = race_N,
+  n_total = totalN,
+  use_grad = F
+)
 
 
-weighted.mean(targets_voters$pres_2020_dem, 
-              targets_voters$n)
 
-weighted.mean(targets_voters$pres_2020_rep, 
-              targets_voters$n)
 
-targets_voters <- targets_voters %>%
+# check
+weighted.mean(output$pres_2020_dem, 
+              output$n)
+
+weighted.mean(output$pres_2020_rep, 
+              output$n)
+
+output <- output %>%
   mutate(pres_2020_other = 1 - (pres_2020_dem + pres_2020_rep)) 
 
 
-targets_voters <- targets_voters %>%
+output <- output %>%
   rename(prop_biden = pres_2020_dem,
          prop_trump = pres_2020_rep,
          prop_other = pres_2020_other)
 
 
-# ADJUST TARGET CELLS  
+
+
+# COMBINE TARGETS NON-VOTERS AND PAST VOTE --------------------------------
 # for voters, collapse vote_type into vote
-expanded_targets_voters <- targets_voters  %>%
+expanded_targets_voters <- output  %>%
   gather(vote_type,prop,c('prop_biden','prop_trump','prop_other')) 
 
 
@@ -551,6 +607,7 @@ targets %>%
   group_by(race, past_vote) %>%
   summarise(n = sum(n)) %>%
   mutate(pct = n / sum(n))
+
 
 # SAVE! -------------------------------------------------------------------
 message("Saving data")

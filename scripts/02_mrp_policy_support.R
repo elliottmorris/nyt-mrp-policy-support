@@ -1,5 +1,57 @@
-library(tidyverse)
+#' G. Elliott Morris | @gelliottmorris | https://www.github.com/elliottmorris
+#'
+#' THIS FILE CONTAINS CODE FOR A CATEGORIAL MULTILEVEL REGRESSION MODEL WITH 
+#' POST-STRATIFICATION ONTO AN AUGMENTED CENSUS-BASED POPULATION FRAME
+#' 
 
+rm(list=ls())
+library(tidyverse)
+library(survey)
+library(brms) # install.packages('brms',version='2.9.0')
+library(cmdstanr) # install.packages("cmdstanr", repos = c("https://mc-stan.org/r-packages/", getOption("repos"))); cmdstanr::install_cmdstan()
+library(tidybayes)
+
+# helper functions
+source("scripts/helpers.R")
+
+# stan stuff
+mc.cores = parallel::detectCores()
+
+# global model settings
+REDO_MODELS = T
+
+
+# STATE LEVEL -------------------------------------------------------------
+message("Wrangling data")
+
+# read in crosswalk
+state_region_cw <- read_csv("data/state/state_region_crosswalk.csv")
+
+# read in post-strat targets
+targets <- read_rds("data/mrp/acs_psframe_with_2020vote.rds")
+
+# read covars
+covars <- read_csv("data/state/state_covariates.csv")
+
+# generation state-level vote equal to region average
+covars = covars %>%
+  left_join(state_region_cw %>% select(state_name, region)) %>%
+  left_join(
+    covars %>% 
+      left_join(state_region_cw) %>%
+      group_by(region) %>%
+      summarise(region_biden_2020 = weighted.mean(state_biden_2020, total_votes_2020))
+  ) %>%
+  select(-c(region))
+
+
+# and now scale covars -- mrp works best with scaled and centered state-level predictors
+scale_unscale_vars <- names(covars)[3:ncol(covars)] # getting names of cols to scale
+
+covars <- scale_variables(covars,scale_unscale_vars) #scale
+
+
+# SURVEY DATA -------------------------------------------------------------
 # source("generate_dataset.R")
 ns = read_rds('nationscape.rds')
 
@@ -11,7 +63,7 @@ names(ns)
 # guns_bg
 # guns_assault
 # raise_taxes_600k 
-# state_abb_college
+# state_college
 # abortion_never_legal
 # abortion_most_time 
 # paid_maternity_12wk
@@ -20,38 +72,227 @@ names(ns)
 
 # cross tab for each
 
+# get crosstabs for each state_name
+state_tabs = lapply(9:ncol(ns),
+                    function(i){
+                      var = names(ns)[i]
+                      
+                      tmp = ns %>%
+                        mutate(var = ns[[var]]) %>%
+                        filter(!is.na(var),var != "Not Sure") %>%
+                        group_by(state_name, var) %>%
+                        summarise(n = sum(weight)) %>%
+                        group_by(state_name) %>%
+                        mutate(pct = n / sum(n)) %>%
+                        filter(var == 'Agree') %>%
+                        select(state_name,var,pct) 
+                      
+                      # negate if opinion is negative
+                      tmp = tmp %>%
+                        mutate(pct = ifelse(names(ns)[i] %in% c('abortion_never_legal'),
+                                            1 - pct, 
+                                            pct)) 
+                      
+                      # spread, rename and return
+                      tmp = tmp %>%
+                        spread(var,pct)  %>%
+                        set_names(., c('state_name', var))
+                      
+                      return(tmp)
+                      
+                    }) 
 
-# get crosstabs for each state_abb
-state_tabs = lapply(5:ncol(ns),
-       function(i){
-         var = names(ns)[i]
-         
-         tmp = ns %>%
-           mutate(var = ns[[var]]) %>%
-           filter(!is.na(var),var != "Not Sure") %>%
-           group_by(state_abb, var) %>%
-           summarise(n = sum(weight)) %>%
-           group_by(state_abb) %>%
-           mutate(pct = n / sum(n)) %>%
-           filter(var == 'Agree') %>%
-           select(state_abb,var,pct) 
-          
-         # negate if opinion is negative
-         tmp = tmp %>%
-           mutate(pct = ifelse(names(ns)[i] %in% c('abortion_never_legal'),
-                               1 - pct, 
-                               pct)) 
-         
-         # spread, rename and return
-         tmp = tmp %>%
-           spread(var,pct)  %>%
-           set_names(., c('state_abb', var))
-         
-         return(tmp)
-         
-       }) 
+state_tabs = Reduce(function(x, y) merge(x, y, by = "state_name", all = TRUE), state_tabs)
 
-state_tabs = Reduce(function(x, y) merge(x, y, by = "state_abb", all = TRUE), state_tabs)
+
+# survey checks
+nrow(ns)
+
+ns <- ns %>%
+  left_join(state_region_cw)
+
+ns %>%
+  #filter(past_vote != 'Non_voter') %>%
+  group_by(past_vote) %>%
+  summarise(n = sum(weight,na.rm=T)) %>%
+  mutate(pct = n/sum(n))
+
+ns %>%
+  filter(past_vote != 'Non_voter') %>%
+  group_by(past_vote) %>%
+  summarise(n = sum(weight,na.rm=T)) %>%
+  mutate(pct = n/sum(n))
+
+# final survey cleanup 
+# check size of poll
+nrow(ns)
+
+# check to make sure each matching var IS THE SAME in both datasets
+unique(ns$age) %in% unique(targets$age)
+unique(ns$sex) %in% unique(targets$sex)
+unique(ns$race) %in% unique(targets$race)
+unique(ns$edu) %in% unique(targets$edu)
+unique(ns$past_vote) %in% unique(targets$past_vote)
+
+#some checks
+ns.svy <- svydesign(~1,data=ns,weights=~weight)
+
+svymean(~past_vote,ns.svy)
+svymean(~past_vote,subset(ns.svy,past_vote != 'Non_voter'))
+
+ns %>%
+  dplyr::filter(past_vote != 'Non_voter') %>%
+  group_by(past_vote) %>%
+  summarise(n=sum(weight)) %>%
+  mutate(prop=n/sum(n))
+
+ns %>%
+  group_by(state_name,past_vote) %>%
+  summarise(n=sum(weight)) %>%
+  mutate(prop=n/sum(n))
+
+ns %>%
+  group_by(state_name,past_vote) %>%
+  summarise(n=sum(weight)) %>%
+  mutate(prop=n/sum(n))
+
+
+svymean(~past_vote, 
+        subset(ns.svy,state_name=='Minnesota'),
+        na.rm=T) 
+
+# sample size by state
+sample_size_bystate <- ns %>% 
+  group_by(state_name) %>%
+  summarise(state_sample_size=n())
+
+ggplot(sample_size_bystate, aes(y=reorder(state_name,state_sample_size),x=state_sample_size)) +
+  geom_point()
+
+
+# ADD COVARS --------------------------------------------------------------
+# add the state's region to the individual data from the targets data
+targets <- targets %>%
+  left_join(state_region_cw %>% 
+              dplyr::select(state_fips,state_name, state_abb, region))
+
+ns <- ns %>%
+  left_join(state_region_cw %>% 
+              dplyr::select(state_name, state_abb, region))
+
+# adding a few other state-level covariates, such as union household and evangelical %
+targets <- targets %>%
+  left_join(covars)
+
+ns <- ns %>%
+  left_join(covars)
+
+# MODEL LIKELY VOTERS -----------------------------------------------------
+generate_state_policy_estimates = function(policy = 'path_to_citizenship_dreamers'){
+  message(sprintf("\tMRP for %s",policy))
+  
+  # voter dummy variable
+  ns$policy_dummy = round(ns[[policy]] =='Agree') 
+  
+  # model formula
+  model_formula = policy_dummy ~ 
+    # state-level smoothers
+    state_biden_2020 + region_biden_2020 + state_vap_turnout_2016 + state_white_evangel + 
+    state_median_income + state_urbanicity +
+    # main demographics, global 
+    race + edu + race:edu + race:sex + past_vote +
+    # pooling across demographics
+    (1 | sex) + (1 | age) + (1 | race) + (1 | edu) + (1 | income5) +
+    (1 | past_vote) +
+    (1 | race:edu) + (1 | sex:race) + 
+    (1 | region) + (1 | state_name) # +
+    # demographics that should vary by geography
+    # (1 + sex + age + race + income5 + edu | region/state_name)
+  
+  # run model!
+  if(REDO_MODELS | isFALSE(any(grepl(sprintf("%s_model.rds",policy) , list.files("models/"))))){
+    this_policy_model <- brm(formula = model_formula,
+                              data = ns %>% sample_n(5000) %>% ungroup(),
+                              family = bernoulli(link='logit'),
+                              # priors
+                              prior = c(set_prior("normal(0, 1)", class = "Intercept"),
+                                        set_prior("normal(0, 1)", class = "b"),
+                                        set_prior("normal(0, 1)", class = "sd")),
+                              # settings
+                              iter = 1000,
+                              warmup = 500,
+                              chains = 4,
+                              cores = 4,
+                              control = list(adapt_delta = 0.9, max_treedepth = 12),
+                              refresh = 100,
+                              thin = 1,
+                              backend = 'cmdstanr',
+                              threads = threading(2))
+    
+    write_rds(this_policy_model,sprintf("models/%s_model.rds",policy) ,compress = 'gz')
+  }else{
+    this_policy_model <- read_rds(sprintf("models/%s_model.rds",policy) )
+  }
+  
+  
+  # get 1000 draws from posterior predictive -- major party vote
+  cell_pred <- rstantools::posterior_epred(
+    object = this_policy_model,
+    newdata = targets,
+    ndraws = 250, 
+    allow_new_levels = TRUE,
+    transform = TRUE
+  )
+  
+  # get medain for turnout
+  cell_pred_median <- cell_pred %>% apply(.,2,median)
+  
+  # add share that are predicted voters to pop
+  targets <- targets %>%
+    mutate(est = cell_pred_median) 
+  
+  # check
+  targets %>%
+    summarise(policy_est = sum(est * n) / sum(n))
+  
+  
+  # return state summarises
+  targets %>%
+    group_by(state_name) %>%
+    summarise(est = sum(est * n) / sum(n)) %>%
+    mutate(policy = policy) %>%
+    return
+}
+
+# run for each of our policies
+path_to_citizenship_dreamers.state = generate_state_policy_estimates('path_to_citizenship_dreamers')
+
+legal_marijuana.state = generate_state_policy_estimates('legal_marijuana')
+
+cap_carbon.state = generate_state_policy_estimates('cap_carbon')
+
+guns_bg.state = generate_state_policy_estimates('guns_bg')
+
+guns_assault.state = generate_state_policy_estimates('guns_assault')
+
+raise_taxes_600k.state = generate_state_policy_estimates('raise_taxes_600k')
+
+state_college.state = generate_state_policy_estimates('state_college')
+
+abortion_never_legal.state = generate_state_policy_estimates('abortion_never_legal')
+
+abortion_most_time.state = generate_state_policy_estimates('abortion_most_time')
+
+paid_maternity_12wk.state = generate_state_policy_estimates('paid_maternity_12wk')
+
+gov_health_subsidies.state = generate_state_policy_estimates('gov_health_subsidies')
+
+minimum_wage_15d.state = generate_state_policy_estimates('minimum_wage_15d')
+
+beepr::beep(2)
+
+# join together
+
 
 
 # add state covariates ----------------------------------------------------
