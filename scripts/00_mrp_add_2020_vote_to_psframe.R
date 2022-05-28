@@ -18,7 +18,7 @@ source("scripts/helpers.R")
 mc.cores = parallel::detectCores()
 
 # global model settings
-REDO_MODELS = TRUE
+REDO_MODELS = T
 
 # STATE LEVEL -------------------------------------------------------------
 message("Wrangling data")
@@ -33,6 +33,11 @@ targets <- read_csv("data/mrp/acs_psframe.csv") %>%
 # read covars
 covars <- read_csv("data/state/state_covariates.csv")
 
+ggplot(covars, aes(x = state_urbanicity, y = state_biden_2020)) +
+  geom_text(aes(label = state_abb)) +
+  geom_smooth() +
+  geom_abline()
+
 # generation state-level vote equal to region average
 covars = covars %>%
   left_join(state_region_cw %>% select(state_name, region)) %>%
@@ -43,7 +48,6 @@ covars = covars %>%
       summarise(region_biden_2020 = weighted.mean(state_biden_2020, total_votes_2020))
   ) %>%
   select(-c(region))
-
 
 # and now scale covars -- mrp works best with scaled and centered state-level predictors
 scale_unscale_vars <- names(covars)[3:ncol(covars)] # getting names of cols to scale
@@ -114,7 +118,7 @@ ces <- ces.raw %>%
     weight = as.numeric(commonweight),
     weight_voters = as.numeric(vvweight),
     
-    state_name = state_region_cw$state_name[match(inputstate_post,state_region_cw$state_fips)]
+    state_name = state_region_cw$state_name[match(inputstate,state_region_cw$state_fips)]
     
     
     ### CONVERSIONS
@@ -124,8 +128,7 @@ ces <- ces.raw %>%
                 sex, age, race, edu, income5,
                 past_vote,
                 weight,weight_voters
-  )  %>%
-  filter(!is.na(past_vote))
+  ) 
 
 prop.table(table(is.na(ces.raw$CL_2020gvm)))
 prop.table(table(ces$past_vote == 'Non_voter'))
@@ -133,8 +136,6 @@ prop.table(table(ces$past_vote == 'Non_voter'))
 nrow(ces)
 nrow(ces) / nrow(ces.raw)
 
-ces <- ces %>%
-  left_join(state_region_cw)
 
 ces %>%
   #filter(past_vote != 'Non_voter') %>%
@@ -157,7 +158,6 @@ unique(ces$age) %in% unique(targets$age)
 unique(ces$sex) %in% unique(targets$sex)
 unique(ces$race) %in% unique(targets$race)
 unique(ces$edu) %in% unique(targets$edu)
-unique(ces$past_vote) %in% unique(targets$past_vote)
 
 #some checks
 ces.svy <- svydesign(~1,data=ces,weights=~weight)
@@ -226,8 +226,8 @@ ces <- ces %>%
 # model formula
 turnout_formula = likely_voter_dummy ~ 
   # state-level smoothers
-  state_biden_2020 + region_biden_2020 + state_vap_turnout_2016 + state_white_evangel + 
-  state_median_income + state_urbanicity +
+  state_biden_2020 + state_urbanicity + state_white_evangel +  
+  state_median_income + region_biden_2020 + state_vap_turnout_2016 +
   # main demographics, global 
   race + edu + race:edu + race:sex + 
   # pooling across demographics
@@ -240,9 +240,9 @@ turnout_formula = likely_voter_dummy ~
 # run model!
 message("Running 2020 turnout MRP")
 
-if(F | isFALSE(any(grepl("turnout_2020_model.rds" , list.files("models/"))))){
+if(REDO_MODELS | isFALSE(any(grepl("turnout_2020_model.rds" , list.files("models/"))))){
   turnout_2020_model <- brm(formula = turnout_formula,
-                            data = ces %>% sample_n(5000) %>% ungroup(),
+                            data = ces %>% filter(state_abb != 'DC'), # %>% sample_n(5000) %>% ungroup(),
                             family = bernoulli(link='logit'),
                             # priors
                             prior = c(set_prior("normal(0, 1)", class = "Intercept"),
@@ -310,9 +310,9 @@ vote_formula = as.formula(sprintf('past_vote  | weights(weight_voters) ~ %s',
 
 vote_formula
 
-if(REDO_MODELS | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/"))))){
+if(F | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/"))))){
   pres_2020_model <- brm(formula = vote_formula,
-                         data = ces[ces$past_vote != 'Non_voter',] %>% sample_n(5000) %>% ungroup(),
+                         data = ces %>% filter(past_vote != 'Non_voter',state_abb != 'DC'), # model-fitting reasons
                          family = categorical(link='logit', refcat = 'Other'),
                          # priors
                          prior = c(set_prior("normal(0, 1)", class = "Intercept",dpar='muBiden'),
@@ -371,13 +371,19 @@ targets %>%
 
 svymean(~past_vote,subset(ces.svy,past_vote!='Non_voter'),na.rm=T)
 
-targets %>%
-  mutate(n * likely_voter) %>%
+
+# compare states graphically
+state_restuls = targets %>%
+  mutate(n = n * likely_voter) %>%
   group_by(state_name) %>%
   summarise(dem = sum(pres_2020_dem * n) / sum(n),
-            rep = sum(pres_2020_rep * n) / sum(n),
-            other = sum(pres_2020_other * n) / sum(n),
-  ) 
+            rep = sum(pres_2020_rep * n) / sum(n))  %>% 
+  left_join(unscale_variables(covars, scale_unscale_vars)) %>%
+  filter(state_abb != 'DC')
+
+ggplot(state_restuls, aes(x = state_biden_2020, y = dem)) +
+  geom_text(aes(label = state_abb)) +
+  geom_abline()
 
 
 # CORRECT 2020 TURNOUT AND VOTE PROBS -------------------------------------

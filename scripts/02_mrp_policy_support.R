@@ -18,7 +18,7 @@ source("scripts/helpers.R")
 mc.cores = parallel::detectCores()
 
 # global model settings
-REDO_MODELS = F # only run models if no cached version
+REDO_MODELS = T # only run models if no cached version
 
 # STATE LEVEL -------------------------------------------------------------
 message("Wrangling data")
@@ -194,24 +194,16 @@ generate_state_policy_estimates = function(policy = 'path_to_citizenship_dreamer
   ns$policy_dummy = round(ns[[policy]] =='Agree') 
   
   # model formula
-  model_formula = policy_dummy ~ 
-    # state-level smoothers
-    state_biden_2020 + region_biden_2020 + state_vap_turnout_2016 + state_white_evangel + 
-    state_median_income + state_urbanicity +
-    # main demographics, global 
-    race + edu + race:edu + race:sex + past_vote +
-    # pooling across demographics
-    (1 | sex) + (1 | age) + (1 | race) + (1 | edu) + (1 | income5) +
-    (1 | past_vote) +
-    (1 | race:edu) + (1 | sex:race) + 
-    (1 | region) + (1 | state_name) # +
-    # demographics that should vary by geography
-    # (1 + sex + age + race + income5 + edu | region/state_name)
+  # model formula
+  model_formula = as.formula(sprintf('policy_dummy ~ %s',
+                                    default_model_formula_no_vote))
+  
+  model_formula
   
   # run model!
   if(REDO_MODELS | isFALSE(any(grepl(sprintf("%s_model.rds",policy) , list.files("models/"))))){
     this_policy_model <- brm(formula = model_formula,
-                              data = ns %>% sample_n(1000) %>% ungroup(),
+                              data = ns %>% sample_n(10000) %>% ungroup(),
                               family = bernoulli(link='logit'),
                               # priors
                               prior = c(set_prior("normal(0, 1)", class = "Intercept"),

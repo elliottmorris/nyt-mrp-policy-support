@@ -157,7 +157,12 @@ ns = dat %>%
          abortion_most_time, paid_maternity_12wk,
          gov_health_subsidies, minimum_wage_15d) %>%
   filter(!is.na(past_vote),
-         state_name != '')
+         state_name != '',
+         !!is.na(state_name), !is.na(sex), !is.na(age), 
+         !is.na(race), !is.na(edu), !is.na(income5),
+         !is.na(past_vote))
+
+
 
 # write -------------------------------------------------------------------
 write_rds(ns,'nationscape.rds',compress='gz')

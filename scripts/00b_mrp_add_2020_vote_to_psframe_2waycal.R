@@ -120,7 +120,7 @@ ces <- ces.raw %>%
     weight = as.numeric(commonweight),
     weight_voters = as.numeric(vvweight),
     
-    state_name = state_region_cw$state_name[match(inputstate_post,state_region_cw$state_fips)]
+    state_name = state_region_cw$state_name[match(inputstate_post, state_region_cw$state_fips)]
     
     
     ### CONVERSIONS
@@ -132,6 +132,9 @@ ces <- ces.raw %>%
                 weight,weight_voters
   )  %>%
   filter(!is.na(past_vote))
+
+mean(is.na(ces.raw$inputstate))
+mean(is.na(ces$state_name))
 
 prop.table(table(is.na(ces.raw$CL_2020gvm)))
 prop.table(table(ces$past_vote == 'Non_voter'))
