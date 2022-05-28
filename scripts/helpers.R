@@ -1,5 +1,20 @@
 options(scipen = 999)
 
+default_model_formula_no_vote = 
+  "
+  # state-level smoothers
+  s(state_biden_2020) + region_biden_2020 + state_vap_turnout_2016 + s(state_white_evangel) + 
+  state_median_income + s(state_urbanicity) +
+  # main demographics, global 
+  race + edu + race:edu +
+  # pooling across demographics
+  (1 | sex) + (1 | age) + (1 | race) + (1 | edu) + (1 | income5) +
+  (1 | race:edu) + (1 | race:sex) + 
+  (1 + race + edu + race:edu | region) + (1 | state_name) # +
+  # demographics that should vary by geography
+  # (1 + sex + age + race + income5 + edu | region/state_name) + race + s(state_biden_2020) "
+
+
 
 # misc --------------------------------------------------------------------
 # logits

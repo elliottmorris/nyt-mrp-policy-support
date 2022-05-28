@@ -18,8 +18,7 @@ source("scripts/helpers.R")
 mc.cores = parallel::detectCores()
 
 # global model settings
-REDO_MODELS = T
-
+REDO_MODELS = F # only run models if no cached version
 
 # STATE LEVEL -------------------------------------------------------------
 message("Wrangling data")
@@ -189,7 +188,7 @@ ns <- ns %>%
 
 # MODEL LIKELY VOTERS -----------------------------------------------------
 generate_state_policy_estimates = function(policy = 'path_to_citizenship_dreamers'){
-  message(sprintf("\tMRP for %s",policy))
+  message(sprintf("\tMultilevel model for %s",policy))
   
   # voter dummy variable
   ns$policy_dummy = round(ns[[policy]] =='Agree') 
@@ -212,7 +211,7 @@ generate_state_policy_estimates = function(policy = 'path_to_citizenship_dreamer
   # run model!
   if(REDO_MODELS | isFALSE(any(grepl(sprintf("%s_model.rds",policy) , list.files("models/"))))){
     this_policy_model <- brm(formula = model_formula,
-                              data = ns %>% sample_n(5000) %>% ungroup(),
+                              data = ns %>% sample_n(1000) %>% ungroup(),
                               family = bernoulli(link='logit'),
                               # priors
                               prior = c(set_prior("normal(0, 1)", class = "Intercept"),
@@ -234,7 +233,7 @@ generate_state_policy_estimates = function(policy = 'path_to_citizenship_dreamer
     this_policy_model <- read_rds(sprintf("models/%s_model.rds",policy) )
   }
   
-  
+  message(sprintf("\tPost-stratification for %s",policy))
   # get 1000 draws from posterior predictive -- major party vote
   cell_pred <- rstantools::posterior_epred(
     object = this_policy_model,
@@ -292,29 +291,47 @@ minimum_wage_15d.state = generate_state_policy_estimates('minimum_wage_15d')
 beepr::beep(2)
 
 # join together
+state_ests = list(path_to_citizenship_dreamers.state,
+  legal_marijuana.state,
+  cap_carbon.state,
+  guns_bg.state,
+  guns_assault.state,
+  raise_taxes_600k.state,
+  state_college.state,
+  abortion_never_legal.state,
+  abortion_most_time.state,
+  paid_maternity_12wk.state,
+  gov_health_subsidies.state,
+  minimum_wage_15d.state) %>% 
+  bind_rows %>%
+  spread(policy, est)
 
 
 
 # add state covariates ----------------------------------------------------
-# population 
-state_pops = read_csv('state/state_populations.csv')
+# add population 
+state_ests = state_ests %>%
+  left_join(targets %>% group_by(state_name) %>% summarise(n = sum(n))) 
 
-state_tabs = state_pops %>%
-  left_join(state_tabs)
-
-# biden and trump vote
-state_tabs = read_csv('state/results_2020.csv') %>%
+# add biden and trump vote
+state_ests = read_csv('data/state/results_2020.csv') %>%
   select(state_name, state_abb, biden_pct, trump_pct) %>%
-  left_join(state_tabs)
+  left_join(state_ests)
+
+# relocate columns
+state_ests = state_ests %>%
+  relocate(c(state_name, state_abb, biden_pct, trump_pct, n))
 
 
-support_senate_votes = state_tabs %>%
+# sum up policies ---------------------------------------------------------
+
+support_senate_votes = state_ests %>%
   gather(policy,pct,6:ncol(.)) %>%
   group_by(policy) %>%
   summarise(support_natl = weighted.mean(pct, n)) %>%
   # now support in median senate seat
   left_join(
-    state_tabs %>%
+    state_ests %>%
       gather(policy,pct,6:ncol(.)) %>%
       filter(state_abb != 'DC') %>%
       group_by(policy) %>%
@@ -322,7 +339,7 @@ support_senate_votes = state_tabs %>%
   ) %>%
   # and support in 40th senate seat by size
   left_join(
-    state_tabs  %>%
+    state_ests  %>%
       arrange(n) %>%
       filter(state_abb != 'DC',
              row_number() <= 20) %>%
@@ -332,7 +349,7 @@ support_senate_votes = state_tabs %>%
   ) %>%
   # and support in 40th senate seat by Biden 2020 margin
   left_join(
-    state_tabs  %>%
+    state_ests  %>%
       arrange(biden_pct) %>%
       filter(state_abb != 'DC',
              row_number() <= 20) %>%
@@ -363,7 +380,7 @@ ggplot(support_senate_votes,
 ggsave('output/fig_policy_support_by_different_institutions.pdf',width = 7, height = 4)
 write_csv(support_senate_votes, 'output/policy_support_by_different_institutions.csv')
 
-state_tabs %>%
+state_ests %>%
   select(state_abb,biden_pct,6:ncol(.)) %>%
   filter(state_abb != 'DC') %>%
   gather(policy,lib_opinion,3:ncol(.)) %>%
@@ -377,4 +394,4 @@ state_tabs %>%
        y = 'Liberal opinion')
 
 ggsave('output/fig_policy_support_by_state.pdf',width = 8, height = 6)
-write_csv(state_tabs, 'output/policy_support_by_state.csv')
+write_csv(state_ests, 'output/policy_support_by_state.csv')
