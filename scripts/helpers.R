@@ -1,16 +1,5 @@
 options(scipen = 999)
 
-# default formula 
-"# state-level smoothers
-  s(state_biden_2020) +  s(state_urbanicity) + s(state_white_evangel) + 
-  state_median_income + region_biden_2020 +
-  # main demographics, global 
-  race + edu + race:edu + past_vote +
-  # pooling across demographics
-  (1 | sex) + (1 | age) + (1 | race) + (1 | edu) + (1 | income5) + (1 | past_vote)
-  (1 | race:edu) + (1 | race:sex) + 
-  (1 + race + past_vote | region) + (1 | state_name)
-"
 
 default_model_formula_no_vote = 
   "
@@ -119,6 +108,16 @@ correct_probs <- function(pstrat, weighting, cell_prob, outcome, state_factor) {
 
 
 
-
-
+# extras ------------------------------------------------------------------
+# this is the old formula for our models, with global mixed effects and little state variation
+"# state-level smoothers
+  s(state_biden_2020) +  s(state_urbanicity) + s(state_white_evangel) + 
+  state_median_income + region_biden_2020 +
+  # main demographics, global 
+  race + edu + race:edu + past_vote +
+  # pooling across demographics
+  (1 | sex) + (1 | age) + (1 | race) + (1 | edu) + (1 | income5) + (1 | past_vote)
+  (1 | race:edu) + (1 | race:sex) + 
+  (1 + race + past_vote | region) + (1 | state_name)
+"
 

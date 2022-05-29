@@ -310,7 +310,7 @@ vote_formula
 
 if(REDO_MODELS | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/"))))){
   pres_2020_model <- brm(formula = vote_formula,
-                         data = ces %>% filter(past_vote != 'Non_voter',state_abb != 'DC') %>% sample_n(2000), # model-fitting reasons
+                         data = ces %>% filter(past_vote != 'Non_voter',state_abb != 'DC'), # model-fitting reasons
                          family = categorical(link='logit', refcat = 'Other'),
                          # priors
                          prior = c(set_prior("normal(0, 1)", class = "Intercept",dpar='muBiden'),
@@ -320,20 +320,23 @@ if(REDO_MODELS | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/")
                                    set_prior("normal(0, 1)", class = "sd",dpar = 'muBiden'),
                                    set_prior("normal(0, 1)", class = "sd",dpar = 'muTrump')),
                          # settings
-                         iter = 2000,
-                         warmup = 1000,
-                         chains = 4,
-                         cores = 4,
+                         iter = 1000,
+                         warmup = 500,
+                         chains = 2,
+                         cores = 2,
                          control = list(adapt_delta = 0.9, max_treedepth = 12),
                          refresh = 10,
-                         thin = 2,
+                         thin = 1,
                          backend = 'cmdstanr',
-                         threads = threading(2))
+                         threads = threading(4))
   
   write_rds(pres_2020_model,"models/pres_2020_model.rds",compress = 'gz')
 }else{
   pres_2020_model <- read_rds("models/pres_2020_model.rds")
 }
+
+# check model mixing
+plot(pres_2020_model, pars = "b_muBiden_Intercept",regex = F)
 
 # post-stratification stage!
 message("\tPost-stratifying 2020 vote onto targets")
