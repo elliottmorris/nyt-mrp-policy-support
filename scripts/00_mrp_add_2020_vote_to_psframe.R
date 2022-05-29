@@ -229,18 +229,16 @@ turnout_formula = likely_voter_dummy ~
   state_biden_2020 + state_urbanicity + state_white_evangel +  
   state_median_income + region_biden_2020 + state_vap_turnout_2016 +
   # main demographics, global 
-  race + edu + race:edu + race:sex + 
+  race + edu + race:sex + 
   # pooling across demographics
   (1 | sex) + (1 | age) + (1 | race) + (1 | edu) + (1 | income5) +
   (1 | race:edu) + (1 | sex:race) + 
   (1 | region) + (1 | state_name) # +
-# demographics that should vary by geography
-# (1 + sex + age + race + income5 + edu | region/state_name)
 
 # run model!
 message("Running 2020 turnout MRP")
 
-if(REDO_MODELS | isFALSE(any(grepl("turnout_2020_model.rds" , list.files("models/"))))){
+if(FALSE | isFALSE(any(grepl("turnout_2020_model.rds" , list.files("models/"))))){
   turnout_2020_model <- brm(formula = turnout_formula,
                             data = ces %>% filter(state_abb != 'DC'), # %>% sample_n(5000) %>% ungroup(),
                             family = bernoulli(link='logit'),
@@ -310,9 +308,9 @@ vote_formula = as.formula(sprintf('past_vote  | weights(weight_voters) ~ %s',
 
 vote_formula
 
-if(F | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/"))))){
+if(REDO_MODELS | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/"))))){
   pres_2020_model <- brm(formula = vote_formula,
-                         data = ces %>% filter(past_vote != 'Non_voter',state_abb != 'DC'), # model-fitting reasons
+                         data = ces %>% filter(past_vote != 'Non_voter',state_abb != 'DC') %>% sample_n(2000), # model-fitting reasons
                          family = categorical(link='logit', refcat = 'Other'),
                          # priors
                          prior = c(set_prior("normal(0, 1)", class = "Intercept",dpar='muBiden'),
@@ -322,13 +320,13 @@ if(F | isFALSE(any(grepl("pres_2020_model.rds" , list.files("models/"))))){
                                    set_prior("normal(0, 1)", class = "sd",dpar = 'muBiden'),
                                    set_prior("normal(0, 1)", class = "sd",dpar = 'muTrump')),
                          # settings
-                         iter = 1000,
-                         warmup = 500,
+                         iter = 2000,
+                         warmup = 1000,
                          chains = 4,
                          cores = 4,
                          control = list(adapt_delta = 0.9, max_treedepth = 12),
                          refresh = 10,
-                         thin = 1,
+                         thin = 2,
                          backend = 'cmdstanr',
                          threads = threading(2))
   
