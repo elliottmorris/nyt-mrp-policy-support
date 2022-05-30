@@ -1,3 +1,8 @@
+# Bid model files
+models/*.rds
+!models/pres_2020_model.rds
+!models/turnout_2020_model.rds
+
 # History files
 .Rhistory
 .Rapp.history
