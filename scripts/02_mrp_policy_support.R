@@ -212,13 +212,13 @@ generate_state_policy_estimates = function(policy = 'path_to_citizenship_dreamer
                               # settings
                               iter = 1000,
                               warmup = 500,
-                              chains = 4,
-                              cores = 4,
+                              chains = 2,
+                              cores = 2,
                               control = list(adapt_delta = 0.9, max_treedepth = 12),
                               refresh = 100,
                               thin = 1,
                               backend = 'cmdstanr',
-                              threads = threading(2))
+                              threads = threading(4))
     
     write_rds(this_policy_model,sprintf("models/%s_model.rds",policy) ,compress = 'gz')
   }else{
