@@ -18,7 +18,7 @@ source("scripts/helpers.R")
 mc.cores = parallel::detectCores()
 
 # global model settings
-REDO_MODELS = TRUE # only run models if no cached version
+REDO_MODELS = FALSE # only run models if no cached version
 
 # STATE LEVEL -------------------------------------------------------------
 message("Wrangling data")
@@ -27,7 +27,7 @@ message("Wrangling data")
 state_region_cw <- read_csv("data/state/state_region_crosswalk.csv")
 
 # read in post-strat targets
-targets <- read_rds("data/mrp/acs_psframe_with_2020vote.rds")
+targets <- read_csv("data/mrp/acs_psframe_with_2020vote.csv")
 
 # read covars
 covars <- read_csv("data/state/state_covariates.csv")
@@ -186,7 +186,7 @@ targets <- targets %>%
 ns <- ns %>%
   left_join(covars)
 
-# MODEL LIKELY VOTERS -----------------------------------------------------
+# MODEL STATE OPINIONS ----------------------------------------------------
 generate_state_policy_estimates = function(policy = 'path_to_citizenship_dreamers'){
   message(sprintf("\tMultilevel model for %s",policy))
   
@@ -305,7 +305,7 @@ state_ests = list(
 
 
 
-# add state covariates ----------------------------------------------------
+# ADD RESULTS OF 2020 ELECTION TO STATE ESTIMATES -------------------------
 # add population 
 state_ests = state_ests %>%
   left_join(targets %>% group_by(state_name) %>% summarise(n = sum(n))) 
@@ -320,8 +320,7 @@ state_ests = state_ests %>%
   relocate(c(state_name, state_abb, biden_pct, trump_pct, n))
 
 
-# sum up policies ---------------------------------------------------------
-
+# SUM UP SUPPORT NAITONALLY VIA DIFFERENT FORMULAS ------------------------
 support_senate_votes = state_ests %>%
   gather(policy,pct,6:ncol(.)) %>%
   group_by(policy) %>%

@@ -18,7 +18,7 @@ source("scripts/helpers.R")
 mc.cores = parallel::detectCores()
 
 # global model settings
-REDO_MODELS = T
+REDO_MODELS = FALSE
 
 # STATE LEVEL -------------------------------------------------------------
 message("Wrangling data")
@@ -424,6 +424,8 @@ expanded_targets <- expanded_targets %>%
                                vote_type == "voter_pred" ~ "Voter"))
 
 
+range(expanded_targets$n)
+
 # then,  do the same for vote
 # adjust probs!
 targets_voters <- expanded_targets[expanded_targets$vote_type == 'Voter',] %>%
@@ -455,8 +457,14 @@ weighted.mean(targets_voters$pres_2020_dem,
 weighted.mean(targets_voters$pres_2020_rep, 
               targets_voters$n)
 
+# add other category and then rebase
 targets_voters <- targets_voters %>%
-  mutate(pres_2020_other = 1 - (pres_2020_dem + pres_2020_rep)) 
+  mutate(pres_2020_other = pmax(0,1 - (pres_2020_dem + pres_2020_rep)) ) %>%
+  mutate(pres_2020_total = pres_2020_other + pres_2020_dem + pres_2020_rep,
+         pres_2020_other = pres_2020_other / pres_2020_total,
+         pres_2020_dem = pres_2020_dem / pres_2020_total,
+         pres_2020_rep = pres_2020_rep / pres_2020_total) %>%
+  select(-pres_2020_total)
 
 
 targets_voters <- targets_voters %>%
@@ -481,10 +489,18 @@ expanded_targets_voters <- expanded_targets_voters %>%
                                vote_type == "prop_trump" ~ "Trump",
                                vote_type == "prop_other" ~ "Other"))
 
+# check
+expanded_targets_voters %>% 
+  group_by(vote_type) %>%
+  summarise(n = sum(n)) %>%
+  mutate(n=n/sum(n))
+
 expanded_targets_voters %>% 
   group_by(race,vote_type) %>%
   summarise(n = sum(n)) %>%
   mutate(n=n/sum(n))
+
+range(expanded_targets_voters$n)
 
 # now we want to add back Non_voters where vote_type  <- 'Non_voter'
 targets <- expanded_targets_voters %>%
@@ -540,7 +556,6 @@ targets %>%
   mutate(biden_margin = Biden - Trump) %>%
   select(-c(Biden,Other,Trump)) 
 
-
 # what is hispanic vote in florida
 targets %>%
   left_join(state_region_cw) %>%
@@ -556,7 +571,7 @@ message("Saving data")
 # save the predictions
 targets %>%
   dplyr::select(state_fips, sex, age, race, edu, income5, past_vote, n) %>%
-  write_rds(.,'data/mrp/acs_psframe_with_2020vote.rds',compress = 'gz')
+  write_csv(.,'data/mrp/acs_psframe_with_2020vote.csv')
 
 
 gc()
