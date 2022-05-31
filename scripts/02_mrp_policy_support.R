@@ -18,7 +18,7 @@ source("scripts/helpers.R")
 mc.cores = parallel::detectCores()
 
 # global model settings
-REDO_MODELS = TRUE # only run models if no cached version
+REDO_MODELS = FALSE # only run models if no cached version
 
 # STATE LEVEL -------------------------------------------------------------
 message("Wrangling data")
@@ -389,5 +389,5 @@ state_ests %>%
   labs(x = "Biden vote share 2020",
        y = 'Liberal opinion')
 
-ggsave('output/fig_policy_support_by_state.pdf',width = 8, height = 6)
+ggsave('output/fig_policy_support_by_state.pdf',width = 11, height = 9)
 write_csv(state_ests, 'output/policy_support_by_state.csv')
