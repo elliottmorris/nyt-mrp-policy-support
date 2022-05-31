@@ -18,7 +18,7 @@ source("scripts/helpers.R")
 mc.cores = parallel::detectCores()
 
 # global model settings
-REDO_MODELS = FALSE # only run models if no cached version
+REDO_MODELS = TRUE # only run models if no cached version
 
 # STATE LEVEL -------------------------------------------------------------
 message("Wrangling data")
@@ -52,7 +52,7 @@ covars <- scale_variables(covars,scale_unscale_vars) #scale
 
 # SURVEY DATA -------------------------------------------------------------
 # source("generate_dataset.R")
-ns = read_rds('nationscape.rds')
+ns = read_rds('data/nationscape.rds')
 
 # what policies do we have?
 names(ns)
@@ -203,7 +203,7 @@ generate_state_policy_estimates = function(policy = 'path_to_citizenship_dreamer
   # run model!
   if(REDO_MODELS | isFALSE(any(grepl(sprintf("%s_model.rds",policy) , list.files("models/"))))){
     this_policy_model <- brm(formula = model_formula,
-                              data = ns %>% filter(state_abb != 'DC') %>% sample_n(20000) %>% ungroup(),
+                              data = ns %>% filter(state_abb != 'DC') %>% sample_n(30000) %>% ungroup(),
                               family = bernoulli(link='logit'),
                               # priors
                               prior = c(set_prior("normal(0, 1)", class = "Intercept"),
